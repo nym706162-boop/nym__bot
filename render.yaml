@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: anonxmusic
+    env: docker
+    plan: free
+    buildCommand: docker build -t app .
+    startCommand: bash start
