@@ -9,4 +9,4 @@ pymongo>=4.17.0
 pytgcrypto>=1.2.12
 python-dotenv~=1.2.3
 yt-dlp[default]>=2026.8.19
-Flask
+Flask==3.0.0
