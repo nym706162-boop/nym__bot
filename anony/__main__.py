@@ -2,10 +2,11 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
-
 import asyncio
 import signal
 import importlib
+
+from keep_alive import keep_alive
 
 from anony import (anon, app, config, db, logger,
                    stop, thumb, userbot, yt)
@@ -53,6 +54,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        keep_alive()
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
