@@ -10,6 +10,62 @@ from anony import app, config, db, logger, queue, yt
 from anony.helpers import utils
 
 
+async def _wait_for_assistant_member(chat_id: int, assistant_id: int, retries: int = 10):
+    """
+    Wait until Telegram confirms that the assistant is a member of the chat.
+    This prevents playback from starting before the join has propagated.
+    """
+    for attempt in range(retries):
+        try:
+            member = await app.get_chat_member(
+                chat_id=chat_id,
+                user_id=assistant_id,
+            )
+
+            if member.status not in [
+                enums.ChatMemberStatus.BANNED,
+                enums.ChatMemberStatus.RESTRICTED,
+            ]:
+                logger.info(
+                    f"ASSISTANT READY | "
+                    f"chat={chat_id} | "
+                    f"assistant={assistant_id} | "
+                    f"attempt={attempt + 1}"
+                )
+                return member
+
+            return member
+
+        except errors.UserNotParticipant:
+            logger.info(
+                f"WAITING ASSISTANT JOIN | "
+                f"chat={chat_id} | "
+                f"assistant={assistant_id} | "
+                f"attempt={attempt + 1}/{retries}"
+            )
+
+        except errors.PeerIdInvalid:
+            logger.info(
+                f"WAITING PEER RESOLUTION | "
+                f"chat={chat_id} | "
+                f"assistant={assistant_id} | "
+                f"attempt={attempt + 1}/{retries}"
+            )
+
+        except Exception as ex:
+            logger.warning(
+                f"MEMBER CHECK RETRY FAILED | "
+                f"chat={chat_id} | "
+                f"assistant={assistant_id} | "
+                f"attempt={attempt + 1} | "
+                f"error={ex}"
+            )
+
+        await asyncio.sleep(2)
+
+    return None
+
+
 def checkUB(play):
     async def wrapper(_, m: types.Message):
         if not m.from_user:
@@ -22,8 +78,8 @@ def checkUB(play):
             return await app.leave_chat(chat_id)
 
         if not m.reply_to_message and (
-            len(m.command) < 2 or
-            (len(m.command) == 2 and m.command[1] == "-f")
+            len(m.command) < 2
+            or (len(m.command) == 2 and m.command[1] == "-f")
         ):
             return await m.reply_text(m.lang["play_usage"])
 
@@ -65,22 +121,23 @@ def checkUB(play):
 
         if chat_id not in db.active_calls:
 
+            # Get assistant client
             try:
                 client = await db.get_client(chat_id)
 
             except Exception as ex:
                 logger.error(
-                    f"GET CLIENT FAILED | chat={chat_id} | error={ex}"
+                    f"GET CLIENT FAILED | "
+                    f"chat={chat_id} | "
+                    f"error={ex}"
                 )
+
                 return await m.reply_text(
                     "❌ Failed to get assistant client.\n\n"
                     f"Chat ID: `{chat_id}`"
                 )
 
-            # -----------------------------------------------------
-            # Resolve assistant session
-            # -----------------------------------------------------
-
+            # Resolve assistant
             try:
                 assistant = await client.get_me()
 
@@ -94,7 +151,8 @@ def checkUB(play):
             except Exception as ex:
                 logger.error(
                     f"ASSISTANT SESSION ERROR | "
-                    f"chat={chat_id} | error={ex}"
+                    f"chat={chat_id} | "
+                    f"error={ex}"
                 )
 
                 return await m.reply_text(
@@ -108,10 +166,12 @@ def checkUB(play):
             # Check assistant membership
             # -----------------------------------------------------
 
+            member = None
+
             try:
                 member = await app.get_chat_member(
                     chat_id=chat_id,
-                    user_id=assistant_id
+                    user_id=assistant_id,
                 )
 
                 logger.info(
@@ -121,113 +181,79 @@ def checkUB(play):
                     f"status={member.status}"
                 )
 
-                if member.status in [
-                    enums.ChatMemberStatus.BANNED,
-                    enums.ChatMemberStatus.RESTRICTED,
-                ]:
-
-                    try:
-                        await app.unban_chat_member(
-                            chat_id=chat_id,
-                            user_id=assistant_id
-                        )
-
-                        logger.info(
-                            f"ASSISTANT UNBANNED | "
-                            f"chat={chat_id} | "
-                            f"assistant={assistant_id}"
-                        )
-
-                    except Exception as ex:
-                        logger.error(
-                            f"ASSISTANT UNBAN FAILED | "
-                            f"chat={chat_id} | "
-                            f"assistant={assistant_id} | "
-                            f"error={ex}"
-                        )
-
-                        return await m.reply_text(
-                            m.lang["play_banned"].format(
-                                app.name,
-                                assistant_id,
-                                assistant.mention,
-                                (
-                                    f"@{assistant.username}"
-                                    if assistant.username
-                                    else None
-                                ),
-                            )
-                        )
-
-            # -----------------------------------------------------
-            # Peer ID invalid
-            # -----------------------------------------------------
-
             except errors.PeerIdInvalid:
-
                 logger.warning(
                     f"PEER_ID_INVALID | "
                     f"chat={chat_id} | "
                     f"assistant={assistant_id}"
                 )
 
-                # Try resolving the group through the assistant
+                # Let the assistant resolve the group.
                 try:
                     await client.get_chat(chat_id)
 
-                    logger.info(
-                        f"ASSISTANT CHAT RESOLVED | "
-                        f"chat={chat_id} | "
-                        f"assistant={assistant_id}"
-                    )
-
                 except Exception as ex:
-
-                    logger.error(
-                        f"ASSISTANT CANNOT RESOLVE CHAT | "
+                    logger.warning(
+                        f"ASSISTANT CHAT RESOLVE FAILED | "
                         f"chat={chat_id} | "
                         f"assistant={assistant_id} | "
                         f"error={ex}"
                     )
 
-                    return await m.reply_text(
-                        "❌ Telegram cannot resolve this group.\n\n"
-                        f"Chat ID: `{chat_id}`\n"
-                        f"Assistant ID: `{assistant_id}`\n\n"
-                        "Add the assistant account to this group "
-                        "and try again."
-                    )
-
-                # Try member check again
+                # Re-check after resolving.
                 try:
                     member = await app.get_chat_member(
                         chat_id=chat_id,
-                        user_id=assistant_id
+                        user_id=assistant_id,
                     )
+
+                except errors.UserNotParticipant:
+                    member = None
 
                 except errors.PeerIdInvalid:
+                    member = None
 
+                except Exception as ex:
                     logger.error(
-                        f"PEER STILL INVALID | "
+                        f"MEMBER CHECK FAILED AFTER RESOLVE | "
                         f"chat={chat_id} | "
-                        f"assistant={assistant_id}"
+                        f"assistant={assistant_id} | "
+                        f"error={ex}"
                     )
-
-                    return await m.reply_text(
-                        "❌ Assistant is not known to Telegram in "
-                        "this group.\n\n"
-                        f"Assistant ID: `{assistant_id}`\n"
-                        f"Chat ID: `{chat_id}`\n\n"
-                        "Add the assistant account to the group "
-                        "manually, then try /play again."
-                    )
-
-            # -----------------------------------------------------
-            # Assistant is not a participant
-            # -----------------------------------------------------
+                    member = None
 
             except errors.UserNotParticipant:
+                member = None
 
+            except errors.ChatAdminRequired:
+                return await m.reply_text(m.lang["admin_required"])
+
+            except Exception as ex:
+                logger.error(
+                    f"ASSISTANT MEMBER CHECK FAILED | "
+                    f"chat={chat_id} | "
+                    f"assistant={assistant_id} | "
+                    f"error={ex}"
+                )
+
+                return await m.reply_text(
+                    f"❌ Assistant check failed.\n\n"
+                    f"`{type(ex).__name__}: {ex}`"
+                )
+
+            # -----------------------------------------------------
+            # Assistant is not in group -> join
+            # -----------------------------------------------------
+
+            if member is None:
+
+                logger.info(
+                    f"ASSISTANT NOT IN CHAT | "
+                    f"chat={chat_id} | "
+                    f"assistant={assistant_id}"
+                )
+
+                # Get invite link
                 if m.chat.username:
                     invite_link = m.chat.username
 
@@ -250,7 +276,8 @@ def checkUB(play):
                     except Exception as ex:
                         logger.error(
                             f"GET INVITE LINK FAILED | "
-                            f"chat={chat_id} | error={ex}"
+                            f"chat={chat_id} | "
+                            f"error={ex}"
                         )
 
                         return await m.reply_text(
@@ -263,40 +290,80 @@ def checkUB(play):
                     m.lang["play_invite"].format(app.name)
                 )
 
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
+
+                # -------------------------------------------------
+                # Join assistant
+                # -------------------------------------------------
 
                 try:
                     await client.join_chat(invite_link)
 
+                    logger.info(
+                        f"ASSISTANT JOIN REQUEST SUCCESS | "
+                        f"chat={chat_id} | "
+                        f"assistant={assistant_id}"
+                    )
+
                 except errors.UserAlreadyParticipant:
-                    pass
+                    logger.info(
+                        f"ASSISTANT ALREADY PARTICIPANT | "
+                        f"chat={chat_id} | "
+                        f"assistant={assistant_id}"
+                    )
 
                 except errors.InviteRequestSent:
 
+                    logger.info(
+                        f"ASSISTANT JOIN REQUEST SENT | "
+                        f"chat={chat_id} | "
+                        f"assistant={assistant_id}"
+                    )
+
+                    # Give Telegram time to register request.
                     await asyncio.sleep(2)
 
                     try:
                         await app.approve_chat_join_request(
-                            chat_id,
-                            assistant_id
+                            chat_id=chat_id,
+                            user_id=assistant_id,
+                        )
+
+                        logger.info(
+                            f"ASSISTANT JOIN REQUEST APPROVED | "
+                            f"chat={chat_id} | "
+                            f"assistant={assistant_id}"
                         )
 
                     except errors.HideRequesterMissing:
                         pass
 
+                    except errors.UserAlreadyParticipant:
+                        pass
+
                     except Exception as ex:
-                        logger.error(
+                        logger.warning(
                             f"APPROVE JOIN FAILED | "
                             f"chat={chat_id} | "
                             f"assistant={assistant_id} | "
                             f"error={ex}"
                         )
 
-                        return await umm.edit_text(
-                            m.lang["play_invite_error"].format(
-                                type(ex).__name__
-                            )
-                        )
+                except errors.PeerIdInvalid as ex:
+
+                    logger.error(
+                        f"JOIN PEER INVALID | "
+                        f"chat={chat_id} | "
+                        f"assistant={assistant_id} | "
+                        f"error={ex}"
+                    )
+
+                    return await umm.edit_text(
+                        "❌ Telegram could not resolve the group for "
+                        "the assistant.\n\n"
+                        f"Chat ID: `{chat_id}`\n"
+                        f"Assistant ID: `{assistant_id}`"
+                    )
 
                 except Exception as ex:
 
@@ -313,34 +380,98 @@ def checkUB(play):
                         )
                     )
 
-                await umm.delete()
+                # -------------------------------------------------
+                # IMPORTANT:
+                # Wait until Telegram confirms membership.
+                # -------------------------------------------------
 
-            # -----------------------------------------------------
-            # Chat admin required
-            # -----------------------------------------------------
-
-            except errors.ChatAdminRequired:
-                return await m.reply_text(
-                    m.lang["admin_required"]
+                member = await _wait_for_assistant_member(
+                    chat_id=chat_id,
+                    assistant_id=assistant_id,
+                    retries=15,
                 )
 
-            # -----------------------------------------------------
-            # Other Telegram errors
-            # -----------------------------------------------------
+                if member is None:
+                    try:
+                        await umm.edit_text(
+                            "❌ Assistant joined, but Telegram has not "
+                            "confirmed the membership yet.\n\n"
+                            "Please try `/play` again in a few seconds."
+                        )
+                    except Exception:
+                        pass
 
-            except Exception as ex:
+                    return
 
-                logger.error(
-                    f"ASSISTANT MEMBER CHECK FAILED | "
-                    f"chat={chat_id} | "
-                    f"assistant={assistant_id} | "
-                    f"error={ex}"
-                )
+                # Check banned/restricted state after joining
+                if member.status in [
+                    enums.ChatMemberStatus.BANNED,
+                    enums.ChatMemberStatus.RESTRICTED,
+                ]:
 
-                return await m.reply_text(
-                    f"❌ Assistant check failed.\n\n"
-                    f"`{type(ex).__name__}: {ex}`"
-                )
+                    try:
+                        await app.unban_chat_member(
+                            chat_id=chat_id,
+                            user_id=assistant_id,
+                        )
+
+                    except Exception:
+                        try:
+                            await umm.edit_text(
+                                m.lang["play_banned"].format(
+                                    app.name,
+                                    assistant_id,
+                                    assistant.mention,
+                                    (
+                                        f"@{assistant.username}"
+                                        if assistant.username
+                                        else None
+                                    ),
+                                )
+                            )
+                        except Exception:
+                            pass
+
+                        return
+
+                # Delete invitation message only after successful join.
+                try:
+                    await umm.delete()
+                except Exception:
+                    pass
+
+            else:
+                # -------------------------------------------------
+                # Existing member
+                # -------------------------------------------------
+
+                if member.status in [
+                    enums.ChatMemberStatus.BANNED,
+                    enums.ChatMemberStatus.RESTRICTED,
+                ]:
+
+                    try:
+                        await app.unban_chat_member(
+                            chat_id=chat_id,
+                            user_id=assistant_id,
+                        )
+
+                        # Wait for Telegram update.
+                        await asyncio.sleep(2)
+
+                    except Exception:
+                        return await m.reply_text(
+                            m.lang["play_banned"].format(
+                                app.name,
+                                assistant_id,
+                                assistant.mention,
+                                (
+                                    f"@{assistant.username}"
+                                    if assistant.username
+                                    else None
+                                ),
+                            )
+                        )
 
         # ---------------------------------------------------------
         # Delete command if enabled
@@ -352,6 +483,17 @@ def checkUB(play):
             except Exception:
                 pass
 
-        return await play(_, m, force, m3u8, video, url)
+        # ---------------------------------------------------------
+        # Start playback
+        # ---------------------------------------------------------
+
+        return await play(
+            _,
+            m,
+            force,
+            m3u8,
+            video,
+            url,
+        )
 
     return wrapper
