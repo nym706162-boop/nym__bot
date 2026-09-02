@@ -15,7 +15,7 @@ from anony.helpers._play import checkUB
 # ── [ Sticker Pack Management Variables ] ──
 CURRENT_STICKER_PACK = "AnimalsAnimated"
 
-# Sudo කෙනෙකුට ටෙලිග්‍රෑම් එකෙන්ම ස්ටිකර් පැක් එක වෙනස් කිරීමට කමාන්ඩ් එක
+
 @app.on_message(filters.command("setsticker") & filters.user(app.sudoers))
 async def set_sticker_pack(_, message: types.Message):
     global CURRENT_STICKER_PACK
@@ -23,17 +23,21 @@ async def set_sticker_pack(_, message: types.Message):
         return await message.reply_text(
             f"⚡ **Current Sticker Pack:** `{CURRENT_STICKER_PACK}`\n\n"
             f"👉 **Usage:** `/setsticker <pack_name>`\n"
-            f"(උදාහරණයක් ලෙස: `/setsticker AnimatedCats`)"
+            f"(Example: `/setsticker AnimatedCats`)"
         )
-    
+
     pack_name = message.command[1]
     try:
         st_set = await app.get_sticker_set(pack_name)
         if st_set:
             CURRENT_STICKER_PACK = pack_name
-            await message.reply_text(f"✅ **Sticker pack successfully updated to:** `{pack_name}`")
+            await message.reply_text(
+                f"✅ **Sticker pack successfully updated to:** `{pack_name}`"
+            )
         else:
-            await message.reply_text("❌ එහෙම ස්ටිකර් පැක් එකක් හොයාගන්න නැහැ! නැවත පරීක්ෂා කරන්න.")
+            await message.reply_text(
+                "❌ Sticker pack not found! Please check the name and try again."
+            )
     except Exception as e:
         await message.reply_text(f"❌ Error: `{e}`")
 
@@ -45,6 +49,7 @@ def playlist_to_queue(chat_id: int, tracks: list) -> str:
         text += f"<b>{pos}.</b> {track.title}\n"
     text = text[:1948] + "</blockquote>"
     return text
+
 
 @app.on_message(
     filters.command(["play", "playforce", "vplay", "vplayforce"])
@@ -62,7 +67,7 @@ async def play_hndlr(
     url: str = None,
 ) -> None:
     sent = await m.reply_text(m.lang["play_searching"])
-    
+
     # ── [ Random Sticker Sender Feature ] ──
     try:
         global CURRENT_STICKER_PACK
