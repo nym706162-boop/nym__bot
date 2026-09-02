@@ -7,7 +7,7 @@ import re
 
 from pyrogram import enums, types
 
-from anony import app
+from anony import app, config
 
 
 class Utilities:
@@ -37,7 +37,6 @@ class Utilities:
         parts = [int(p) for p in time.strip().split(":")]
         return sum(value * 60**i for i, value in enumerate(reversed(parts)))
 
-
     def get_url(self, message_1: types.Message) -> str | None:
         link = None
         messages = [message_1]
@@ -63,7 +62,6 @@ class Utilities:
             return link.split("&si")[0].split("?si")[0]
         return None
 
-
     async def extract_user(self, msg: types.Message) -> types.User | None:
         if msg.reply_to_message:
             return msg.reply_to_message.from_user
@@ -84,7 +82,6 @@ class Utilities:
 
         return None
 
-
     async def play_log(
         self,
         m: types.Message,
@@ -94,17 +91,20 @@ class Utilities:
     ) -> None:
         if m.chat.id == app.logger:
             return
-        _text = m.lang["play_log"].format(
-            app.name,
-            m.chat.id,
-            m.chat.title,
-            m.from_user.id,
-            m.from_user.mention,
-            link,
-            title,
-            duration,
+            
+        # Cyberpunk Style Custom Layout
+        _text = (
+            f"🎶 **{config.MUSIC_BOT_NAME} STREAMING** ⚡\n\n"
+            f"┏ 🎧 **Track:** `{title}`\n"
+            f"┣ ⏱️ **Duration:** `{duration}`\n"
+            f"┣ 👤 **By:** {m.from_user.mention}\n"
+            f"┗ 🌐 **Source:** [YouTube]({link})"
         )
-        await app.send_message(chat_id=app.logger, text=_text)
+        await app.send_message(
+            chat_id=app.logger, 
+            text=_text, 
+            disable_web_page_preview=True
+        )
 
     async def send_log(self, m: types.Message, chat: bool = False) -> None:
         if chat:
