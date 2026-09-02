@@ -13,12 +13,11 @@ from anony.helpers import buttons, utils
 from anony.helpers._play import checkUB
 
 # ── [ Sticker Pack Management Variables ] ──
-CURRENT_STICKER_PACK = "AnimalsAnimated"
+CURRENT_STICKER_PACK = "Sanlymaaa"
 
 
 @app.on_message(filters.command("setsticker") & filters.group)
 async def set_sticker_pack(_, message: types.Message):
-    # Check if the user is a sudoer manually to avoid unhashable type errors
     if message.from_user.id not in app.sudoers:
         return await message.reply_text("❌ This command is only for Sudo users!")
 
@@ -31,19 +30,10 @@ async def set_sticker_pack(_, message: types.Message):
         )
 
     pack_name = message.command[1]
-    try:
-        st_set = await app.get_sticker_set(pack_name)
-        if st_set:
-            CURRENT_STICKER_PACK = pack_name
-            await message.reply_text(
-                f"✅ **Sticker pack successfully updated to:** `{pack_name}`"
-            )
-        else:
-            await message.reply_text(
-                "❌ Sticker pack not found! Please check the name and try again."
-            )
-    except Exception as e:
-        await message.reply_text(f"❌ Error: `{e}`")
+    CURRENT_STICKER_PACK = pack_name
+    await message.reply_text(
+        f"✅ **Sticker pack successfully updated to:** `{pack_name}`"
+    )
 
 
 def playlist_to_queue(chat_id: int, tracks: list) -> str:
@@ -173,6 +163,17 @@ async def play_hndlr(
         else:
             await sent.edit_text(m.lang["play_downloading"])
             file.file_path = await yt.download(file.id, video=video)
+
+    # ── [ Cyberpunk Custom Layout for Now Playing ] ──
+    cyber_playing_text = (
+        f"⚡ **{config.MUSIC_BOT_NAME} STREAMING LIVE** 🎶\n\n"
+        f"┏ 🎧 **Track:** `{file.title}`\n"
+        f"┣ ⏱️ **Duration:** `{file.duration}`\n"
+        f"┣ 👤 **Requested By:** {mention}\n"
+        f"┗ 🌐 **Source:** [YouTube]({file.url})"
+    )
+    sent.text = cyber_playing_text  # sent මැසේජ් එකේ ටෙක්ස්ට් එක Cyberpunk ඩිසයින් එකට මාරු කරයි
+    # ────────────────────────────────────────────────
 
     await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     if not tracks:
