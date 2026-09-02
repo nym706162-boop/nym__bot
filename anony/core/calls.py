@@ -2,6 +2,8 @@
 # Licensed under the MIT License.
 # This file is part of AnonXMusic
 
+import asyncio
+
 
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
                       RTMPStreamingUnsupported, ConnectionError,
@@ -81,11 +83,34 @@ class TgCall(PyTgCalls):
             ffmpeg_parameters=f"-ss {seek_time}" if seek_time > 1 else None,
         )
         try:
-            await client.play(
-                chat_id=chat_id,
-                stream=stream,
-                config=types.GroupCallConfig(auto_start=False),
-            )
+            # The assistant may have just re-joined the group. Give Telegram
+            # a moment to propagate the membership before connecting to VC.
+            last_error = None
+            for attempt in range(3):
+                try:
+                    await client.play(
+                        chat_id=chat_id,
+                        stream=stream,
+                        config=types.GroupCallConfig(auto_start=False),
+                    )
+                    logger.info(
+                        f"ASSISTANT VC PLAYING | chat={chat_id} | "
+                        f"attempt={attempt + 1}"
+                    )
+                    last_error = None
+                    break
+                except Exception as ex:
+                    last_error = ex
+                    logger.warning(
+                        f"VC PLAY ATTEMPT FAILED | chat={chat_id} | "
+                        f"attempt={attempt + 1}/3 | error={ex}"
+                    )
+                    if attempt < 2:
+                        await asyncio.sleep(3)
+
+            if last_error is not None:
+                raise last_error
+
             if not seek_time:
                 media.time = 1
                 await db.add_call(chat_id)
@@ -212,4 +237,4 @@ class TgCall(PyTgCalls):
             await client.start()
             self.clients.append(client)
             await self.decorators(client)
-        logger.info("PyTgCalls client(s) started.")
+        logger.info("PyTgCalls client(s) start
