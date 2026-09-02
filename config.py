@@ -27,7 +27,7 @@ class Config:
 
         self.AUTO_LEAVE: bool = getenv("AUTO_LEAVE", "False").lower() == "true"
         self.AUTO_END: bool = getenv("AUTO_END", "False").lower() == "true"
-    
+
         self.THUMB_GEN: bool = getenv("THUMB_GEN", "True").lower() == "true"
         self.VIDEO_PLAY: bool = getenv("VIDEO_PLAY", "True").lower() == "true"
 
@@ -37,14 +37,26 @@ class Config:
             url for url in getenv("COOKIES_URL", "").split(" ")
             if url and "batbin.me" in url
         ]
+
         self.DEFAULT_THUMB = getenv("DEFAULT_THUMB", "https://te.legra.ph/file/3e40a408286d4eda24191.jpg")
         self.PING_IMG = getenv("PING_IMG", "https://imgur.com/a/6V6BFCE")
         self.START_IMG = getenv("START_IMG", "https://imgur.com/a/6V6BFCE")
 
+        # Music Bot Name
+        self.MUSIC_BOT_NAME = getenv("MUSIC_BOT_NAME", "nym")
+
     def check(self):
         missing = [
             var
-            for var in ["API_ID", "API_HASH", "BOT_TOKEN", "MONGO_URL", "LOGGER_ID", "OWNER_ID", "SESSION1"]
+            for var in [
+                "API_ID",
+                "API_HASH",
+                "BOT_TOKEN",
+                "MONGO_URL",
+                "LOGGER_ID",
+                "OWNER_ID",
+                "SESSION1",
+            ]
             if not getattr(self, var)
         ]
         if missing:
