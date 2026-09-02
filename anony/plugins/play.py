@@ -3,6 +3,7 @@
 # This file is part of AnonXMusic
 
 
+import random
 from pathlib import Path
 
 from pyrogram import filters, types
@@ -10,6 +11,31 @@ from pyrogram import filters, types
 from anony import anon, app, config, db, lang, queue, tg, yt
 from anony.helpers import buttons, utils
 from anony.helpers._play import checkUB
+
+# ── [ Sticker Pack Management Variables ] ──
+CURRENT_STICKER_PACK = "AnimalsAnimated"
+
+# Sudo කෙනෙකුට ටෙලිග්‍රෑම් එකෙන්ම ස්ටිකර් පැක් එක වෙනස් කිරීමට කමාන්ඩ් එක
+@app.on_message(filters.command("setsticker") & filters.user(app.sudoers))
+async def set_sticker_pack(_, message: types.Message):
+    global CURRENT_STICKER_PACK
+    if len(message.command) < 2:
+        return await message.reply_text(
+            f"⚡ **Current Sticker Pack:** `{CURRENT_STICKER_PACK}`\n\n"
+            f"👉 **Usage:** `/setsticker <pack_name>`\n"
+            f"(උදාහරණයක් ලෙස: `/setsticker AnimatedCats`)"
+        )
+    
+    pack_name = message.command[1]
+    try:
+        st_set = await app.get_sticker_set(pack_name)
+        if st_set:
+            CURRENT_STICKER_PACK = pack_name
+            await message.reply_text(f"✅ **Sticker pack successfully updated to:** `{pack_name}`")
+        else:
+            await message.reply_text("❌ එහෙම ස්ටිකර් පැක් එකක් හොයාගන්න නැහැ! නැවත පරීක්ෂා කරන්න.")
+    except Exception as e:
+        await message.reply_text(f"❌ Error: `{e}`")
 
 
 def playlist_to_queue(chat_id: int, tracks: list) -> str:
@@ -36,6 +62,18 @@ async def play_hndlr(
     url: str = None,
 ) -> None:
     sent = await m.reply_text(m.lang["play_searching"])
+    
+    # ── [ Random Sticker Sender Feature ] ──
+    try:
+        global CURRENT_STICKER_PACK
+        st_set = await app.get_sticker_set(CURRENT_STICKER_PACK)
+        if st_set and st_set.stickers:
+            random_sticker = random.choice(st_set.stickers)
+            await app.send_sticker(chat_id=m.chat.id, sticker=random_sticker.file_id)
+    except Exception:
+        pass
+    # ───────────────────────────────────────
+
     file = None
     mention = m.from_user.mention
     media = tg.get_media(m.reply_to_message) if m.reply_to_message else None
@@ -95,17 +133,21 @@ async def play_hndlr(
         position = queue.add(m.chat.id, file)
 
         if position != 0 or await db.get_call(m.chat.id):
+            # Cyberpunk Custom Layout for Queued Tracks
+            cyber_queued_text = (
+                f"🎶 **{config.MUSIC_BOT_NAME} TRACK QUEUED** ⚡\n\n"
+                f"┏ 🔢 **Position:** `{position}`\n"
+                f"┣ 🎧 **Track:** `{file.title}`\n"
+                f"┣ ⏱️ **Duration:** `{file.duration}`\n"
+                f"┣ 👤 **Requested By:** {m.from_user.mention}\n"
+                f"┗ 🌐 **Source:** [YouTube]({file.url})"
+            )
             await sent.edit_text(
-                m.lang["play_queued"].format(
-                    position,
-                    file.url,
-                    file.title,
-                    file.duration,
-                    m.from_user.mention,
-                ),
+                text=cyber_queued_text,
                 reply_markup=buttons.play_queued(
                     m.chat.id, file.id, m.lang["play_now"]
                 ),
+                disable_web_page_preview=True,
             )
             if tracks:
                 added = playlist_to_queue(m.chat.id, tracks)
