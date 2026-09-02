@@ -10,54 +10,49 @@ from anony import app, config, db, logger, queue, yt
 from anony.helpers import utils
 
 
-async def _wait_for_assistant_member(chat_id: int, assistant_id: int, retries: int = 10):
-    """
-    Wait until Telegram confirms that the assistant is a member of the chat.
-    This prevents playback from starting before the join has propagated.
+async def _wait_for_assistant_member(
+    client,
+    chat_id: int,
+    assistant_id: int,
+    retries: int = 15,
+):
+    """Wait for Telegram to confirm the assistant is in the group.
+
+    The assistant session is used for the check because the bot session can
+    return PEER_ID_INVALID for a user it has not cached as a peer.
     """
     for attempt in range(retries):
         try:
-            member = await app.get_chat_member(
+            # Force the assistant session to resolve/cache the chat.
+            await client.get_chat(chat_id)
+
+            member = await client.get_chat_member(
                 chat_id=chat_id,
                 user_id=assistant_id,
             )
 
-            if member.status not in [
-                enums.ChatMemberStatus.BANNED,
-                enums.ChatMemberStatus.RESTRICTED,
-            ]:
-                logger.info(
-                    f"ASSISTANT READY | "
-                    f"chat={chat_id} | "
-                    f"assistant={assistant_id} | "
-                    f"attempt={attempt + 1}"
-                )
-                return member
-
+            logger.info(
+                f"ASSISTANT READY | chat={chat_id} | "
+                f"assistant={assistant_id} | attempt={attempt + 1}"
+            )
             return member
 
         except errors.UserNotParticipant:
             logger.info(
-                f"WAITING ASSISTANT JOIN | "
-                f"chat={chat_id} | "
-                f"assistant={assistant_id} | "
-                f"attempt={attempt + 1}/{retries}"
+                f"ASSISTANT NOT PARTICIPANT YET | chat={chat_id} | "
+                f"assistant={assistant_id} | attempt={attempt + 1}/{retries}"
             )
 
         except errors.PeerIdInvalid:
             logger.info(
-                f"WAITING PEER RESOLUTION | "
-                f"chat={chat_id} | "
-                f"assistant={assistant_id} | "
-                f"attempt={attempt + 1}/{retries}"
+                f"ASSISTANT PEER NOT READY | chat={chat_id} | "
+                f"assistant={assistant_id} | attempt={attempt + 1}/{retries}"
             )
 
         except Exception as ex:
             logger.warning(
-                f"MEMBER CHECK RETRY FAILED | "
-                f"chat={chat_id} | "
-                f"assistant={assistant_id} | "
-                f"attempt={attempt + 1} | "
+                f"ASSISTANT MEMBER CHECK RETRY FAILED | chat={chat_id} | "
+                f"assistant={assistant_id} | attempt={attempt + 1}/{retries} | "
                 f"error={ex}"
             )
 
@@ -385,24 +380,26 @@ def checkUB(play):
                 # Wait until Telegram confirms membership.
                 # -------------------------------------------------
 
+                # A successful join_chat() means the assistant has joined.
+                # Telegram can take a little time to update the peer cache, so
+                # wait briefly before starting the voice-call connection.
+                await asyncio.sleep(3)
+
                 member = await _wait_for_assistant_member(
                     client=client,
                     chat_id=chat_id,
                     assistant_id=assistant_id,
-                    retries=15,
-                    )
+                    retries=5,
+                )
 
+                # Do not block playback only because the Bot API/assistant
+                # peer cache has not caught up yet. The join itself succeeded.
                 if member is None:
-                    try:
-                        await umm.edit_text(
-                            "❌ Assistant joined, but Telegram has not "
-                            "confirmed the membership yet.\n\n"
-                            "Please try `/play` again in a few seconds."
-                        )
-                    except Exception:
-                        pass
-
-                    return
+                    logger.warning(
+                        f"MEMBERSHIP CHECK TIMEOUT AFTER SUCCESSFUL JOIN | "
+                        f"chat={chat_id} | assistant={assistant_id}; "
+                        f"continuing to playback"
+                    )
 
                 # Check banned/restricted state after joining
                 if member.status in [
