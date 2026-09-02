@@ -16,14 +16,18 @@ from anony.helpers._play import checkUB
 CURRENT_STICKER_PACK = "AnimalsAnimated"
 
 
-@app.on_message(filters.command("setsticker") & filters.user(app.sudoers))
+@app.on_message(filters.command("setsticker") & filters.group)
 async def set_sticker_pack(_, message: types.Message):
+    # Check if the user is a sudoer manually to avoid unhashable type errors
+    if message.from_user.id not in app.sudoers:
+        return await message.reply_text("❌ This command is only for Sudo users!")
+
     global CURRENT_STICKER_PACK
     if len(message.command) < 2:
         return await message.reply_text(
             f"⚡ **Current Sticker Pack:** `{CURRENT_STICKER_PACK}`\n\n"
             f"👉 **Usage:** `/setsticker <pack_name>`\n"
-            f"(Example: `/setsticker AnimatedCats`)"
+            f"(Example: `/setsticker Sanlymaaa`)"
         )
 
     pack_name = message.command[1]
