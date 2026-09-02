@@ -386,10 +386,11 @@ def checkUB(play):
                 # -------------------------------------------------
 
                 member = await _wait_for_assistant_member(
+                    client=client,
                     chat_id=chat_id,
                     assistant_id=assistant_id,
                     retries=15,
-                )
+                    )
 
                 if member is None:
                     try:
