@@ -165,11 +165,19 @@ async def play_hndlr(
     )
     sent.text = cyber_playing_text
 
-    # Call to play media
-    played_media = await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
+    # Call to play media safely
+    played_media = None
+    try:
+        played_media = await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
+    except Exception as play_err:
+        print(f"Play Media Error: {play_err}")
 
-    # Check Telegram file_id and save to Database
-    file_id_to_save = getattr(file, "file_id", None) or getattr(played_media, "file_id", None)
+    # Check Telegram file_id safely without raising 'NoneType' attribute errors
+    file_id_to_save = None
+    if file and getattr(file, "file_id", None):
+        file_id_to_save = file.file_id
+    elif played_media and getattr(played_media, "file_id", None):
+        file_id_to_save = played_media.file_id
 
     if hasattr(db, "set_audio_cache") and file_id_to_save and getattr(file, "id", None):
         try:
