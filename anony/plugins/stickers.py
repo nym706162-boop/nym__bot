@@ -3,8 +3,8 @@ from pyrogram.types import Message
 from anony import app, db
 
 
-@app.on_message(filters.command(["setpack", "addpack"]) & ~filters.private)
-async def set_pack_cmd(client, message: Message):
+@app.on_message(filters.command(["setsticker", "setpack"]) & app.sudoers)
+async def set_global_pack_cmd(client, message: Message):
     pack_name = None
 
     if message.reply_to_message and message.reply_to_message.sticker:
@@ -19,14 +19,10 @@ async def set_pack_cmd(client, message: Message):
 
     if not pack_name:
         return await message.reply_text(
-            "Reply to a sticker or provide a sticker pack link."
+            "👉 **Usage:** Reply to a sticker OR use `/setsticker <pack_name_or_link>`"
         )
 
-    await db.set_sticker_pack(message.chat.id, pack_name)
-    await message.reply_text(f"Sticker pack saved: {pack_name}")
-
-
-@app.on_message(filters.command(["delpack", "rmpack"]) & ~filters.private)
-async def del_pack_cmd(client, message: Message):
-    await db.del_sticker_pack(message.chat.id)
-    await message.reply_text("Sticker pack removed.")
+    await db.set_sticker_pack("GLOBAL_STICKER_PACK", pack_name)
+    await message.reply_text(
+        f"✅ **Global Sticker Pack set for all groups:** <code>{pack_name}</code>"
+    )
