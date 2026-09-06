@@ -61,7 +61,23 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # Install dependencies
 uv sync --frozen
+### 🪟 Windows (PowerShell)
 
+```powershell
+git clone [https://github.com/nym706162-boop/nym__bot](https://github.com/nym706162-boop/nym__bot) && cd nym__bot
+
+# Install uv
+irm [https://astral.sh/uv/install.ps1](https://astral.sh/uv/install.ps1) | iex
+
+# Install dependencies
+uv sync --frozen
+
+# Rename and configure environment variables
+mv sample.env .env
+# Edit .env with your credentials
+
+# Start the bot
+uv run python3 -m anony
 # Rename and configure environment variables
 mv sample.env .env
 # Edit .env with your credentials
