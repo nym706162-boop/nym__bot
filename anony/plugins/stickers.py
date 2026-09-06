@@ -1,11 +1,15 @@
 from pyrogram import filters
 from pyrogram.types import Message
 
-from config import SUDOERS
 from anony import app, db
 
 
-@app.on_message(filters.command(["setsticker", "setpack"]) & SUDOERS)
+# Custom filter to check sudo users safely
+async def sudo_filter(_, __, message: Message):
+    return message.from_user and message.from_user.id in app.sudoers
+
+
+@app.on_message(filters.command(["setsticker", "setpack"]) & filters.create(sudo_filter))
 async def set_global_pack_cmd(client, message: Message):
     pack_name = None
 
