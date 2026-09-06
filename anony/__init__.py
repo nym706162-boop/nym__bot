@@ -61,7 +61,7 @@ thumb = Thumbnail()
 from anony.core.calls import TgCall
 anon = TgCall()
 
-from anony import utils
+from anony.helpers import utils
 
 
 async def stop() -> None:
