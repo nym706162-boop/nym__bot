@@ -165,11 +165,16 @@ async def play_hndlr(
     )
     sent.text = cyber_playing_text
 
-    await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
+    # Call to play media
+    played_media = await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
 
-    if hasattr(db, "set_audio_cache") and getattr(file, "file_id", None):
+    # Check Telegram file_id and save to Database
+    file_id_to_save = getattr(file, "file_id", None) or getattr(played_media, "file_id", None)
+
+    if hasattr(db, "set_audio_cache") and file_id_to_save and getattr(file, "id", None):
         try:
-            await db.set_audio_cache(file.id, file.file_id)
+            await db.set_audio_cache(file.id, file_id_to_save)
+            print(f"DEBUG: Saved to DB Cache successfully! Vid ID: {file.id} -> File ID: {file_id_to_save}")
         except Exception as cache_err:
             print(f"Cache Warning: {cache_err}")
 
