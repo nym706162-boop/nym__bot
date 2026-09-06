@@ -13,7 +13,7 @@ from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
 from anony import (app, config, db, lang, logger,
-                   queue, thumb, userbot, yt)
+                   queue, thumb, userbot, utils, yt)
 from anony.helpers import Media, Track, buttons
 
 
@@ -34,7 +34,7 @@ class TgCall(PyTgCalls):
                         pass
             
             if next_media and not getattr(next_media, "file_path", None):
-                next_media.file_path = await yt.download(next_media.id, video=next_media.video)
+                next_media.file_path = await yt.download(next_media.id, video=getattr(next_media, "video", False))
         except Exception as e:
             logger.error(f"Pre-fetch error in chat {chat_id}: {e}")
 
@@ -86,8 +86,8 @@ class TgCall(PyTgCalls):
             return None
 
         # Safe fallback for file_id attribute to prevent AttributeError
-        if not hasattr(media, "file_id"):
-            media.file_id = None
+        if not hasattr(media, "file_id") or media.file_id is None:
+            media.file_id = ""
 
         stream = types.MediaStream(
             media_path=media.file_path,
@@ -113,6 +113,17 @@ class TgCall(PyTgCalls):
             if not seek_time:
                 media.time = 1
                 await db.add_call(chat_id)
+
+                # Play log trigger
+                asyncio.create_task(
+                    utils.play_log(
+                        m=message,
+                        link=getattr(media, "url", ""),
+                        title=getattr(media, "title", "Track"),
+                        duration=getattr(media, "duration", "00:00"),
+                    )
+                )
+
                 text = _lang["play_media"].format(
                     getattr(media, "url", ""),
                     getattr(media, "title", "Track"),
@@ -231,7 +242,7 @@ class TgCall(PyTgCalls):
     async def boot(self) -> None:
         PyTgCallsSession.notice_displayed = True
         for ub in userbot.clients:
-            client = PyTgCalls(ub, cache_duration=100)
+            client = PyTgCalls(ub)
             await client.start()
             self.clients.append(client)
             await self.decorators(client)
