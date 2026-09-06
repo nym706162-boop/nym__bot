@@ -1,8 +1,3 @@
-# Copyright (c) 2026 by nym
-# Licensed under the MIT License.
-# This file is part of nym
-
-
 import random
 from pathlib import Path
 
@@ -163,8 +158,13 @@ async def play_hndlr(
         if Path(fname).exists():
             file.file_path = fname
         else:
-            await sent.edit_text(m.lang["play_downloading"])
-            file.file_path = await yt.download(file.id, video=video)
+            # ── [ Database Audio Cache Checking Logic ] ──
+            cached_file_id = await db.get_audio_cache(file.id) if hasattr(db, "get_audio_cache") else None
+            if cached_file_id:
+                file.file_id = cached_file_id
+            else:
+                await sent.edit_text(m.lang["play_downloading"])
+                file.file_path = await yt.download(file.id, video=video)
 
     # ── [ Modern & Clean UI Layout for Now Playing ] ──
     cyber_playing_text = (
@@ -180,6 +180,11 @@ async def play_hndlr(
     # ────────────────────────────────────────────────
 
     await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
+
+    # ── [ Save Cached File ID to Database After Streaming ] ──
+    if hasattr(db, "set_audio_cache") and getattr(file, "file_id", None):
+        await db.set_audio_cache(file.id, file.file_id)
+
     if not tracks:
         return
     added = playlist_to_queue(m.chat.id, tracks)
