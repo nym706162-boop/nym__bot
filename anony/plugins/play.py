@@ -36,7 +36,7 @@ async def play_hndlr(
     try:
         pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
         print(f"DEBUG: Retrieved Pack Name from DB -> {pack_name}")
-        
+
         if pack_name:
             try:
                 sticker_set = await app.get_sticker_set(pack_name)
@@ -98,6 +98,13 @@ async def play_hndlr(
     if not file:
         return await sent.edit_text(m.lang["play_usage"])
 
+    # Check Database for cached audio file_id before downloading
+    if hasattr(db, "get_audio_cache") and hasattr(file, "id"):
+        cached_file_id = await db.get_audio_cache(file.id)
+        if cached_file_id:
+            file.file_id = cached_file_id
+            print(f"DEBUG: Track loaded from Database Cache! ID: {cached_file_id}")
+
     if getattr(file, "duration_sec", 0) > config.DURATION_LIMIT:
         return await sent.edit_text(
             m.lang["play_duration_limit"].format(config.DURATION_LIMIT // 60)
@@ -138,17 +145,14 @@ async def play_hndlr(
                 )
             return
 
-    if not getattr(file, "file_path", None):
+    # Download logic execution
+    if not getattr(file, "file_path", None) and not getattr(file, "file_id", None):
         fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
         if Path(fname).exists():
             file.file_path = fname
         else:
-            cached_file_id = await db.get_audio_cache(file.id) if hasattr(db, "get_audio_cache") else None
-            if cached_file_id:
-                file.file_id = cached_file_id
-            else:
-                await sent.edit_text(m.lang["play_downloading"])
-                file.file_path = await yt.download(file.id, video=video)
+            await sent.edit_text(m.lang["play_downloading"])
+            file.file_path = await yt.download(file.id, video=video)
 
     cyber_playing_text = (
         f"🎶 <b>{config.MUSIC_BOT_NAME} • NOW PLAYING</b>\n"
