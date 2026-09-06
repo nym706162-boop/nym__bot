@@ -35,17 +35,15 @@ async def play_hndlr(
     sent = await m.reply_text(m.lang["play_searching"])
 
     # ── [ Global Sticker Pack Trigger ] ──
-    pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
-    if pack_name:
-        try:
+    try:
+        pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
+        if pack_name:
             sticker_set = await app.get_sticker_set(pack_name)
             if sticker_set and sticker_set.stickers:
                 random_sticker = random.choice(sticker_set.stickers)
-                await app.send_sticker(
-                    chat_id=m.chat.id, sticker=random_sticker.file_id
-                )
-        except Exception as e:
-            print(f"Global Sticker Error: {e}")
+                await m.reply_sticker(random_sticker.file_id)
+    except Exception as e:
+        print(f"Global Sticker Error: {e}")
     # ─────────────────────────────────────
 
     file = None
