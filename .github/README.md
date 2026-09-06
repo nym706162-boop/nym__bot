@@ -52,17 +52,20 @@ Built with Python, Pyrogram, and Py-TgCalls, it’s optimized for reliability an
 
 <h4>🐧 Linux / macOS</h4>
 
-```bash
-git clone [https://github.com/nym706162-boop/nym__bot](https://github.com/nym706162-boop/nym__bot) && cd nym__bot
+git clone https://github.com/nym706162-boop/nym__bot && cd nym__bot
 
 # Install uv
-curl -Ls [https://astral.sh/uv/install.sh](https://astral.sh/uv/install.sh) | sh
+curl -Ls https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
 # Install dependencies
 uv sync --frozen
 
 # Rename and configure environment variables
+mv sample.env .env
+
+# Start the bot
+bash start
 mv sample.env .env
 # Edit .env with your credentials
 
