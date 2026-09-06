@@ -4,16 +4,16 @@
 
 import asyncio
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
-                      RTMPStreamingUnsupported, ConnectionError,
-                      TransportParseException)
+                     RTMPStreamingUnsupported, ConnectionError,
+                     TransportParseException)
 from pyrogram.errors import (ChatSendMediaForbidden, ChatSendPhotosForbidden,
-                              MessageIdInvalid)
+                           MessageIdInvalid)
 from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
 from anony import (app, config, db, lang, logger,
-                    queue, thumb, userbot, yt)
+                   queue, thumb, userbot, yt)
 from anony.helpers import Media, Track, buttons
 
 
@@ -22,10 +22,18 @@ class TgCall(PyTgCalls):
         self.clients = []
 
     async def _preload_next(self, chat_id: int) -> None:
-        """Pre-fetch the next track in the queue in the background."""
         try:
-            next_media = queue.get_next_up(chat_id)
-            if next_media and not next_media.file_path:
+            next_media = None
+            for attr in ["get_upcoming", "get_next_up", "upcoming", "get"]:
+                if hasattr(queue, attr):
+                    func = getattr(queue, attr)
+                    try:
+                        next_media = func(chat_id)
+                        break
+                    except Exception:
+                        pass
+            
+            if next_media and not getattr(next_media, "file_path", None):
                 next_media.file_path = await yt.download(next_media.id, video=next_media.video)
         except Exception as e:
             logger.error(f"Pre-fetch error in chat {chat_id}: {e}")
@@ -95,7 +103,6 @@ class TgCall(PyTgCalls):
                 config=types.GroupCallConfig(auto_start=False),
             )
 
-            # Trigger background pre-fetching for the next track
             asyncio.create_task(self._preload_next(chat_id))
 
             if not seek_time:
