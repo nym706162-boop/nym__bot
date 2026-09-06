@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: anonxmusic
+    name: nym
     env: docker
     plan: free
     buildCommand: docker build -t app .

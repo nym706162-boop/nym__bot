@@ -43,7 +43,7 @@ class Config:
         self.START_IMG = getenv("START_IMG", "https://imgur.com/a/6V6BFCE")
 
         # Music Bot Name
-        self.MUSIC_BOT_NAME = getenv("MUSIC_BOT_NAME", "nym")
+        self.MUSIC_BOT_NAME = "nym Music Bot"
 
     def check(self):
         missing = [

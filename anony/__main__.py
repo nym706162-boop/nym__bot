@@ -1,6 +1,6 @@
-# Copyright (c) 2025 AnonymousX1025
+# Copyright (c) 2026 by nym
 # Licensed under the MIT License.
-# This file is part of AnonXMusic
+# This file is part of nym
 
 import asyncio
 import signal

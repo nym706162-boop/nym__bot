@@ -167,7 +167,7 @@ wheels = [
 ]
 
 [[package]]
-name = "anonxmusic"
+name = "nym"
 version = "3.0.3"
 source = { virtual = "." }
 dependencies = [
