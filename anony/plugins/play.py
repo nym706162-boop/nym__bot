@@ -32,25 +32,27 @@ async def play_hndlr(
     video: bool = False,
     url: str = None,
 ) -> None:
-    sent = await m.reply_text(m.lang["play_searching"])
-
-    # ── [ Debugging Global Sticker Trigger ] ──
+    # ── [ Global Sticker Pack Trigger - Top Priority ] ──
     try:
         pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
         print(f"DEBUG: Retrieved Pack Name from DB -> {pack_name}")
         
         if pack_name:
-            sticker_set = await app.get_sticker_set(pack_name)
-            if sticker_set and sticker_set.stickers:
-                random_sticker = random.choice(sticker_set.stickers)
-                await m.reply_sticker(random_sticker.file_id)
-            else:
-                print("DEBUG: Sticker set is empty or invalid.")
+            try:
+                sticker_set = await app.get_sticker_set(pack_name)
+                if sticker_set and getattr(sticker_set, "stickers", None):
+                    random_sticker = random.choice(sticker_set.stickers)
+                    await m.reply_sticker(random_sticker.file_id)
+            except Exception as st_err:
+                print(f"DEBUG: Falling back to direct sticker ID/Link -> {st_err}")
+                await m.reply_sticker(pack_name)
         else:
             print("DEBUG: No pack_name found in Database!")
     except Exception as e:
-        print(f"DEBUG Error: {e}")
-    # ──────────────────────────────────────────
+        print(f"DEBUG Sticker Error: {e}")
+    # ───────────────────────────────────────────────────
+
+    sent = await m.reply_text(m.lang["play_searching"])
 
     file = None
     mention = m.from_user.mention
@@ -96,13 +98,13 @@ async def play_hndlr(
     if not file:
         return await sent.edit_text(m.lang["play_usage"])
 
-    if file.duration_sec > config.DURATION_LIMIT:
+    if getattr(file, "duration_sec", 0) > config.DURATION_LIMIT:
         return await sent.edit_text(
             m.lang["play_duration_limit"].format(config.DURATION_LIMIT // 60)
         )
 
     if await db.is_logger():
-        await utils.play_log(m, sent.link, file.title, file.duration)
+        await utils.play_log(m, sent.link, getattr(file, "title", "Track"), getattr(file, "duration", "00:00"))
 
     file.user = mention
     if force:
@@ -111,13 +113,12 @@ async def play_hndlr(
         position = queue.add(m.chat.id, file)
 
         if position != 0 or await db.get_call(m.chat.id):
-            # Modern & Clean UI Layout for Queued Tracks
             cyber_queued_text = (
                 f"✨ <b>{config.MUSIC_BOT_NAME} • TRACK ADDED</b>\n"
                 f"────────────────────────\n"
                 f"📌 <b>Position :</b> <code>#{position}</code>\n"
-                f"🎵 <b>Track    :</b> <a href='{file.url}'>{file.title}</a>\n"
-                f"⏳ <b>Duration :</b> <code>{file.duration}</code>\n"
+                f"🎵 <b>Track    :</b> <a href='{getattr(file, 'url', '')}'>{getattr(file, 'title', 'Track')}</a>\n"
+                f"⏳ <b>Duration :</b> <code>{getattr(file, 'duration', '00:00')}</code>\n"
                 f"👤 <b>Requested:</b> {m.from_user.mention}\n"
                 f"📡 <b>Source   :</b> <code>YouTube</code>\n"
                 f"────────────────────────"
@@ -137,12 +138,11 @@ async def play_hndlr(
                 )
             return
 
-    if not file.file_path:
+    if not getattr(file, "file_path", None):
         fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
         if Path(fname).exists():
             file.file_path = fname
         else:
-            # ── [ Database Audio Cache Checking Logic ] ──
             cached_file_id = await db.get_audio_cache(file.id) if hasattr(db, "get_audio_cache") else None
             if cached_file_id:
                 file.file_id = cached_file_id
@@ -150,24 +150,24 @@ async def play_hndlr(
                 await sent.edit_text(m.lang["play_downloading"])
                 file.file_path = await yt.download(file.id, video=video)
 
-    # ── [ Modern & Clean UI Layout for Now Playing ] ──
     cyber_playing_text = (
         f"🎶 <b>{config.MUSIC_BOT_NAME} • NOW PLAYING</b>\n"
         f"────────────────────────\n"
-        f"🎵 <b>Track    :</b> <a href='{file.url}'>{file.title}</a>\n"
-        f"⏳ <b>Duration :</b> <code>{file.duration}</code>\n"
+        f"🎵 <b>Track    :</b> <a href='{getattr(file, 'url', '')}'>{getattr(file, 'title', 'Track')}</a>\n"
+        f"⏳ <b>Duration :</b> <code>{getattr(file, 'duration', '00:00')}</code>\n"
         f"👤 <b>Requested:</b> {mention}\n"
         f"📡 <b>Source   :</b> <code>YouTube</code>\n"
         f"────────────────────────"
     )
     sent.text = cyber_playing_text
-    # ────────────────────────────────────────────────
 
     await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
 
-    # ── [ Save Cached File ID to Database After Streaming ] ──
     if hasattr(db, "set_audio_cache") and getattr(file, "file_id", None):
-        await db.set_audio_cache(file.id, file.file_id)
+        try:
+            await db.set_audio_cache(file.id, file.file_id)
+        except Exception as cache_err:
+            print(f"Cache Warning: {cache_err}")
 
     if not tracks:
         return
