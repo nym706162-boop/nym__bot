@@ -47,7 +47,11 @@ class Telegram:
         start_time = time.time()
 
         media = msg.audio or msg.voice or msg.video or msg.document
-        file_id = getattr(media, "file_unique_id", None)
+        
+        # Safely extract file_id & file_unique_id
+        file_unique_id = getattr(media, "file_unique_id", None)
+        tg_file_id = getattr(media, "file_id", None)
+        
         file_ext = getattr(media, "file_name", "").split(".")[-1]
         file_size = getattr(media, "file_size", 0)
         file_title = getattr(media, "title", "Telegram File") or "Telegram File"
@@ -87,26 +91,27 @@ class Telegram:
             )
 
         try:
-            file_path = f"downloads/{file_id}.{file_ext}"
+            file_path = f"downloads/{file_unique_id}.{file_ext}"
             if not os.path.exists(file_path):
-                if file_id in self.active:
+                if file_unique_id in self.active:
                     await sent.edit_text(sent.lang["dl_active"])
                     return await sent.stop_propagation()
 
-                self.active.append(file_id)
+                self.active.append(file_unique_id)
                 task = asyncio.create_task(
                     msg.download(file_name=file_path, progress=progress)
                 )
                 self.active_tasks[msg_id] = task
                 await task
-                if file_id in self.active: self.active.remove(file_id)
+                if file_unique_id in self.active: self.active.remove(file_unique_id)
                 self.active_tasks.pop(msg_id, None)
                 await sent.edit_text(
                     sent.lang["dl_complete"].format(round(time.time() - start_time, 2))
                 )
 
             return Media(
-                id=file_id,
+                id=file_unique_id,
+                file_id=tg_file_id,
                 duration=time.strftime("%M:%S", time.gmtime(duration)),
                 duration_sec=duration,
                 file_path=file_path,
@@ -120,12 +125,12 @@ class Telegram:
         finally:
             self.events.pop(msg_id, None)
             self.last_edit.pop(msg_id, None)
-            if file_id in self.active: self.active.remove(file_id)
-
+            if file_unique_id in self.active: self.active.remove(file_unique_id)
 
     async def process_m3u8(self, url: str, msg_id: int, video: bool) -> Media:
         return Media(
             id=str(msg_id),
+            file_id=None,
             file_path=url,
             message_id=msg_id,
             url=url,
