@@ -292,6 +292,24 @@ class MongoDB:
             upsert=True,
         )
 
+    # STICKER PACK METHODS
+    async def get_sticker_pack(self, chat_id: int) -> str | None:
+        doc = await self.db.settings.find_one({"_id": chat_id})
+        return doc.get("sticker_pack") if doc else None
+
+    async def set_sticker_pack(self, chat_id: int, pack_name: str) -> None:
+        await self.db.settings.update_one(
+            {"_id": chat_id},
+            {"$set": {"sticker_pack": pack_name}},
+            upsert=True,
+        )
+
+    async def del_sticker_pack(self, chat_id: int) -> None:
+        await self.db.settings.update_one(
+            {"_id": chat_id},
+            {"$unset": {"sticker_pack": ""}},
+        )
+
     # SUDO METHODS
     async def add_sudo(self, user_id: int) -> None:
         await self.cache.update_one(
