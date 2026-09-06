@@ -91,6 +91,20 @@ class MongoDB:
     async def set_loop(self, chat_id: int, count: int) -> None:
         self.loop[chat_id] = count
 
+    # AUDIO / VIDEO CACHE METHODS
+    async def get_audio_cache(self, vid_id: str) -> str | None:
+        doc = await self.cache.find_one({"vid_id": vid_id})
+        if doc:
+            return doc.get("telegram_file_id")
+        return None
+
+    async def set_audio_cache(self, vid_id: str, telegram_file_id: str) -> None:
+        await self.cache.update_one(
+            {"vid_id": vid_id},
+            {"$set": {"telegram_file_id": telegram_file_id}},
+            upsert=True,
+        )
+
     # AUTH METHODS
     async def _get_auth(self, chat_id: int) -> set[int]:
         if chat_id not in self.auth:
@@ -311,7 +325,6 @@ class MongoDB:
         if not self.users:
             self.users.extend([user["_id"] async for user in self.usersdb.find()])
         return self.users
-
 
     async def migrate_coll(self) -> None:
         logger.info("Migrating users and chats from old collections...")
