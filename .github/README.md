@@ -46,14 +46,11 @@ Built with Python, Pyrogram, and Py-TgCalls, it’s optimized for reliability an
 - Required variables mentioned in <a href="https://github.com/nym706162-boop/nym__bot/blob/master/sample.env">sample.env</a>
 
 <details>
-    <summary>
-        <h3>Local / VPS Setup</h3>
-    </summary>
+    <summary><b>Local / VPS Setup</b></summary>
+    <br>
 
-<h4>🐧 Linux / macOS</h4>
-
-```bash
-git clone https://github.com/nym706162-boop/nym__bot && cd nym__bot
+    <b>🐧 Linux / macOS</b>
+    <pre><code>git clone https://github.com/nym706162-boop/nym__bot && cd nym__bot
 
 # Install uv
 curl -Ls https://astral.sh/uv/install.sh | sh
@@ -66,4 +63,22 @@ uv sync --frozen
 mv sample.env .env
 
 # Start the bot
-bash start
+bash start</code></pre>
+
+    <br>
+
+    <b>🪟 Windows (PowerShell)</b>
+    <pre><code>git clone https://github.com/nym706162-boop/nym__bot && cd nym__bot
+
+# Install uv
+irm https://astral.sh/uv/install.ps1 | iex
+
+# Install dependencies
+uv sync --frozen
+
+# Rename and configure environment variables
+mv sample.env .env
+
+# Start the bot
+uv run python3 -m anony</code></pre>
+</details>
