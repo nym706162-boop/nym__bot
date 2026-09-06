@@ -13,7 +13,8 @@ from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
 from anony import (app, config, db, lang, logger,
-                   queue, thumb, userbot, utils, yt)
+                   queue, thumb, userbot, yt)
+from anony import utils
 from anony.helpers import Media, Track, buttons
 
 
