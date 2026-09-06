@@ -13,7 +13,7 @@ from pathlib import Path
 
 from py_yt import Playlist, VideosSearch
 
-from anony import logger
+from anony import logger, config, db, app
 from anony.helpers import Track, utils
 
 
@@ -48,9 +48,10 @@ class YouTube:
 
     def get_cookies(self):
         if not self.checked:
-            for file in os.listdir(self.cookie_dir):
-                if file.endswith(".txt"):
-                    self.cookies.append(f"{self.cookie_dir}/{file}")
+            if os.path.exists(self.cookie_dir):
+                for file in os.listdir(self.cookie_dir):
+                    if file.endswith(".txt"):
+                        self.cookies.append(f"{self.cookie_dir}/{file}")
             self.checked = True
         if not self.cookies:
             if not self.warned:
@@ -121,17 +122,55 @@ class YouTube:
             pass
         return tracks
 
+    async def _cache_to_telegram(self, video_id: str, file_path: str, video: bool) -> None:
+        """Background task to upload HQ file to Telegram Log Channel for caching"""
+        try:
+            if not config.LOG_GROUP_ID or not os.path.exists(file_path):
+                return
+
+            if video:
+                sent = await app.send_video(
+                    chat_id=config.LOG_GROUP_ID,
+                    video=file_path,
+                    caption=f"🎥 Cached Video ID: `{video_id}`",
+                )
+                file_id = sent.video.file_id
+            else:
+                sent = await app.send_audio(
+                    chat_id=config.LOG_GROUP_ID,
+                    audio=file_path,
+                    caption=f"🎵 Cached Audio ID: `{video_id}`",
+                )
+                file_id = sent.audio.file_id
+
+            # Save File ID in Database
+            await db.add_cached_track(video_id, file_id)
+            logger.info(f"Successfully cached {video_id} to Telegram Log Channel.")
+        except Exception as e:
+            logger.error(f"Error caching track to Telegram: {e}")
+
     async def download(self, video_id: str, video: bool = False) -> str | None:
-        url = self.base + video_id
         ext = "mp4" if video else "webm"
         filename = f"downloads/{video_id}.{ext}"
 
+        # 1. Local Storage Cache Check
         if Path(filename).exists():
+            logger.info(f"Local Cache Hit: {filename}")
             return filename
 
+        # 2. Telegram Channel Cache Check
+        try:
+            cached_file_id = await db.get_cached_track(video_id)
+            if cached_file_id:
+                logger.info(f"Telegram Channel Cache Hit for {video_id}")
+                return cached_file_id
+        except Exception:
+            pass
+
+        # 3. Download from YouTube if not cached
+        url = self.base + video_id
         cookie = self.get_cookies()
 
-        # ── [ FAST DOWNLOAD OPTIMIZED OPTIONS ] ──
         base_opts = {
             "outtmpl": "downloads/%(id)s.%(ext)s",
             "quiet": True,
@@ -143,12 +182,11 @@ class YouTube:
             "nocheckcertificate": True,
             "cookiefile": cookie,
             "remote_components": ["ejs:github"],
-            # 🚀 Speed Improvements Configs:
-            "concurrent_fragment_downloads": 10,  # එකපාර කෑලි 10ක් ඩවුන්ලෝඩ් කරයි
-            "buffersize": 1024 * 64,              # 64 KB buffer size
-            "http_chunk_size": 10485760,          # 10MB chunk size
+            "concurrent_fragment_downloads": 10,
+            "buffersize": 1024 * 64,
+            "http_chunk_size": 10485760,
             "cachedir": False,
-            "prefer_insecure": True,              # Speed up SSL overhead
+            "prefer_insecure": True,
             "retries": 3,
             "fragment_retries": 3,
         }
@@ -176,4 +214,10 @@ class YouTube:
                     return None
             return filename
 
-        return await asyncio.to_thread(_download)
+        downloaded_file = await asyncio.to_thread(_download)
+
+        # 4. Upload to Telegram Log Channel in background after downloading
+        if downloaded_file and os.path.exists(downloaded_file):
+            asyncio.create_task(self._cache_to_telegram(video_id, downloaded_file, video))
+
+        return downloaded_file

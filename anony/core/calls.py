@@ -2,24 +2,33 @@
 # Licensed under the MIT License.
 # This file is part of nym
 
-
+import asyncio
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
                       RTMPStreamingUnsupported, ConnectionError,
                       TransportParseException)
 from pyrogram.errors import (ChatSendMediaForbidden, ChatSendPhotosForbidden,
-                             MessageIdInvalid)
+                              MessageIdInvalid)
 from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
 from anony import (app, config, db, lang, logger,
-                   queue, thumb, userbot, yt)
+                    queue, thumb, userbot, yt)
 from anony.helpers import Media, Track, buttons
 
 
 class TgCall(PyTgCalls):
     def __init__(self):
         self.clients = []
+
+    async def _preload_next(self, chat_id: int) -> None:
+        """Pre-fetch the next track in the queue in the background."""
+        try:
+            next_media = queue.get_next_up(chat_id)
+            if next_media and not next_media.file_path:
+                next_media.file_path = await yt.download(next_media.id, video=next_media.video)
+        except Exception as e:
+            logger.error(f"Pre-fetch error in chat {chat_id}: {e}")
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
@@ -47,7 +56,6 @@ class TgCall(PyTgCalls):
             await client.leave_call(chat_id, close=False)
         except Exception:
             pass
-
 
     async def play_media(
         self,
@@ -86,6 +94,10 @@ class TgCall(PyTgCalls):
                 stream=stream,
                 config=types.GroupCallConfig(auto_start=False),
             )
+
+            # Trigger background pre-fetching for the next track
+            asyncio.create_task(self._preload_next(chat_id))
+
             if not seek_time:
                 media.time = 1
                 await db.add_call(chat_id)
@@ -139,7 +151,6 @@ class TgCall(PyTgCalls):
             await self.stop(chat_id)
             await message.edit_text(_lang["error_rtmp"])
 
-
     async def replay(self, chat_id: int) -> None:
         if not await db.get_call(chat_id):
             return
@@ -149,7 +160,6 @@ class TgCall(PyTgCalls):
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
         media.message_id = msg.id
         await self.play_media(chat_id, msg, media)
-
 
     async def play_next(self, chat_id: int) -> None:
         if loop := await db.get_loop(chat_id):
@@ -184,11 +194,9 @@ class TgCall(PyTgCalls):
         media.message_id = msg.id
         await self.play_media(chat_id, msg, media)
 
-
     async def ping(self) -> float:
         pings = [client.ping for client in self.clients]
         return round(sum(pings) / len(pings), 2)
-
 
     async def decorators(self, client: PyTgCalls) -> None:
         @client.on_update()
@@ -203,7 +211,6 @@ class TgCall(PyTgCalls):
                     types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
                 ]:
                     await self.stop(update.chat_id)
-
 
     async def boot(self) -> None:
         PyTgCallsSession.notice_displayed = True
