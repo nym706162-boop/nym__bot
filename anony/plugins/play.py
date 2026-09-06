@@ -24,15 +24,15 @@ async def set_sticker_pack(_, message: types.Message):
     global CURRENT_STICKER_PACK
     if len(message.command) < 2:
         return await message.reply_text(
-            f"⚡ **Current Sticker Pack:** `{CURRENT_STICKER_PACK}`\n\n"
-            f"👉 **Usage:** `/setsticker <pack_name>`\n"
-            f"(Example: `/setsticker Sanlymaaa`)"
+            f"⚡ <b>Current Sticker Pack:</b> <code>{CURRENT_STICKER_PACK}</code>\n\n"
+            f"👉 <b>Usage:</b> <code>/setsticker &lt;pack_name&gt;</code>\n"
+            f"(Example: <code>/setsticker Sanlymaaa</code>)"
         )
 
     pack_name = message.command[1]
     CURRENT_STICKER_PACK = pack_name
     await message.reply_text(
-        f"✅ **Sticker pack successfully updated to:** `{pack_name}`"
+        f"✅ <b>Sticker pack successfully updated to:</b> <code>{pack_name}</code>"
     )
 
 
@@ -132,14 +132,16 @@ async def play_hndlr(
         position = queue.add(m.chat.id, file)
 
         if position != 0 or await db.get_call(m.chat.id):
-            # Cyberpunk Custom Layout for Queued Tracks
+            # Modern & Clean UI Layout for Queued Tracks
             cyber_queued_text = (
-                f"🎶 <b>{config.MUSIC_BOT_NAME} TRACK QUEUED</b> ⚡\n\n"
-                f"┏ 🔢 <b>Position:</b> <code>{position}</code>\n"
-                f"┣ 🎧 <b>Track:</b> <a href='{file.url}'>{file.title}</a>\n"
-                f"┣ ⏱️ <b>Duration:</b> <code>{file.duration}</code>\n"
-                f"┣ 👤 <b>Requested By:</b> {m.from_user.mention}\n"
-                f"┗ 🌐 <b>Source:</b> <code>YouTube</code>"
+                f"✨ <b>{config.MUSIC_BOT_NAME} • TRACK ADDED</b>\n"
+                f"────────────────────────\n"
+                f"📌 <b>Position :</b> <code>#{position}</code>\n"
+                f"🎵 <b>Track    :</b> <a href='{file.url}'>{file.title}</a>\n"
+                f"⏳ <b>Duration :</b> <code>{file.duration}</code>\n"
+                f"👤 <b>Requested:</b> {m.from_user.mention}\n"
+                f"📡 <b>Source   :</b> <code>YouTube</code>\n"
+                f"────────────────────────"
             )
             await sent.edit_text(
                 text=cyber_queued_text,
@@ -164,13 +166,15 @@ async def play_hndlr(
             await sent.edit_text(m.lang["play_downloading"])
             file.file_path = await yt.download(file.id, video=video)
 
-    # ── [ Cyberpunk Custom Layout for Now Playing ] ──
+    # ── [ Modern & Clean UI Layout for Now Playing ] ──
     cyber_playing_text = (
-        f"⚡ <b>{config.MUSIC_BOT_NAME} STREAMING LIVE</b> 🎶\n\n"
-        f"┏ 🎧 <b>Track:</b> <a href='{file.url}'>{file.title}</a>\n"
-        f"┣ ⏱️ <b>Duration:</b> <code>{file.duration}</code>\n"
-        f"┣ 👤 <b>Requested By:</b> {mention}\n"
-        f"┗ 🌐 <b>Source:</b> <code>YouTube</code>"
+        f"🎶 <b>{config.MUSIC_BOT_NAME} • NOW PLAYING</b>\n"
+        f"────────────────────────\n"
+        f"🎵 <b>Track    :</b> <a href='{file.url}'>{file.title}</a>\n"
+        f"⏳ <b>Duration :</b> <code>{file.duration}</code>\n"
+        f"👤 <b>Requested:</b> {mention}\n"
+        f"📡 <b>Source   :</b> <code>YouTube</code>\n"
+        f"────────────────────────"
     )
     sent.text = cyber_playing_text
     # ────────────────────────────────────────────────
