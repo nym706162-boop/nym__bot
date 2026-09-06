@@ -27,6 +27,7 @@ class DummyLogger:
     def error(self, msg):
         pass
 
+
 class YouTube:
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
@@ -129,6 +130,8 @@ class YouTube:
             return filename
 
         cookie = self.get_cookies()
+
+        # ── [ FAST DOWNLOAD OPTIMIZED OPTIONS ] ──
         base_opts = {
             "outtmpl": "downloads/%(id)s.%(ext)s",
             "quiet": True,
@@ -140,18 +143,26 @@ class YouTube:
             "nocheckcertificate": True,
             "cookiefile": cookie,
             "remote_components": ["ejs:github"],
+            # 🚀 Speed Improvements Configs:
+            "concurrent_fragment_downloads": 10,  # එකපාර කෑලි 10ක් ඩවුන්ලෝඩ් කරයි
+            "buffersize": 1024 * 64,              # 64 KB buffer size
+            "http_chunk_size": 10485760,          # 10MB chunk size
+            "cachedir": False,
+            "prefer_insecure": True,              # Speed up SSL overhead
+            "retries": 3,
+            "fragment_retries": 3,
         }
 
         if video:
             ydl_opts = {
                 **base_opts,
-                "format": "(bestvideo[height<=?720][width<=?1280][ext=mp4])+(bestaudio)",
+                "format": "(bestvideo[height<=?720][width<=?1280][ext=mp4])+bestaudio/best[ext=mp4]/best",
                 "merge_output_format": "mp4",
             }
         else:
             ydl_opts = {
                 **base_opts,
-                "format": "bestaudio[ext=webm][acodec=opus]",
+                "format": "bestaudio[ext=webm][acodec=opus]/bestaudio/best",
             }
 
         def _download():
