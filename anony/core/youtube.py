@@ -125,19 +125,21 @@ class YouTube:
     async def _cache_to_telegram(self, video_id: str, file_path: str, video: bool) -> None:
         """Background task to upload HQ file to Telegram Log Channel for caching"""
         try:
-            if not config.LOG_GROUP_ID or not os.path.exists(file_path):
+            # Check if LOG_ID exists in config (changed from LOG_GROUP_ID to LOG_ID)
+            log_id = getattr(config, "LOG_ID", None) or getattr(config, "LOG_GROUP_ID", None)
+            if not log_id or not os.path.exists(file_path):
                 return
 
             if video:
                 sent = await app.send_video(
-                    chat_id=config.LOG_GROUP_ID,
+                    chat_id=log_id,
                     video=file_path,
                     caption=f"🎥 Cached Video ID: `{video_id}`",
                 )
                 file_id = sent.video.file_id
             else:
                 sent = await app.send_audio(
-                    chat_id=config.LOG_GROUP_ID,
+                    chat_id=log_id,
                     audio=file_path,
                     caption=f"🎵 Cached Audio ID: `{video_id}`",
                 )
