@@ -123,10 +123,12 @@ class YouTube:
         return tracks
 
     async def _cache_to_telegram(self, video_id: str, file_path: str, video: bool) -> None:
-        """Background task to upload HQ file to Telegram Log Channel for caching"""
         try:
-            # Check if LOG_ID exists in config (changed from LOG_GROUP_ID to LOG_ID)
-            log_id = getattr(config, "LOG_ID", None) or getattr(config, "LOG_GROUP_ID", None)
+            log_id = (
+                getattr(config, "LOGGER_ID", None)
+                or getattr(config, "LOG_ID", None)
+                or getattr(config, "LOG_GROUP_ID", None)
+            )
             if not log_id or not os.path.exists(file_path):
                 return
 
@@ -145,7 +147,6 @@ class YouTube:
                 )
                 file_id = sent.audio.file_id
 
-            # Save File ID in Database
             await db.add_cached_track(video_id, file_id)
             logger.info(f"Successfully cached {video_id} to Telegram Log Channel.")
         except Exception as e:
@@ -155,12 +156,10 @@ class YouTube:
         ext = "mp4" if video else "webm"
         filename = f"downloads/{video_id}.{ext}"
 
-        # 1. Local Storage Cache Check
         if Path(filename).exists():
             logger.info(f"Local Cache Hit: {filename}")
             return filename
 
-        # 2. Telegram Channel Cache Check
         try:
             cached_file_id = await db.get_cached_track(video_id)
             if cached_file_id:
@@ -169,7 +168,6 @@ class YouTube:
         except Exception:
             pass
 
-        # 3. Download from YouTube if not cached
         url = self.base + video_id
         cookie = self.get_cookies()
 
@@ -218,7 +216,6 @@ class YouTube:
 
         downloaded_file = await asyncio.to_thread(_download)
 
-        # 4. Upload to Telegram Log Channel in background after downloading
         if downloaded_file and os.path.exists(downloaded_file):
             asyncio.create_task(self._cache_to_telegram(video_id, downloaded_file, video))
 
