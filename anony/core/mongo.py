@@ -5,6 +5,7 @@
 
 from random import randint
 from time import time
+from typing import Union
 
 from pymongo import AsyncMongoClient
 
@@ -293,20 +294,20 @@ class MongoDB:
         )
 
     # STICKER PACK METHODS
-    async def get_sticker_pack(self, chat_id: int) -> str | None:
-        doc = await self.db.settings.find_one({"_id": chat_id})
+    async def get_sticker_pack(self, chat_id: Union[int, str]) -> str | None:
+        doc = await self.db.settings.find_one({"_id": str(chat_id)})
         return doc.get("sticker_pack") if doc else None
 
-    async def set_sticker_pack(self, chat_id: int, pack_name: str) -> None:
+    async def set_sticker_pack(self, chat_id: Union[int, str], pack_name: str) -> None:
         await self.db.settings.update_one(
-            {"_id": chat_id},
+            {"_id": str(chat_id)},
             {"$set": {"sticker_pack": pack_name}},
             upsert=True,
         )
 
-    async def del_sticker_pack(self, chat_id: int) -> None:
+    async def del_sticker_pack(self, chat_id: Union[int, str]) -> None:
         await self.db.settings.update_one(
-            {"_id": chat_id},
+            {"_id": str(chat_id)},
             {"$unset": {"sticker_pack": ""}},
         )
 
