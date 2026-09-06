@@ -1,7 +1,8 @@
 from pyrogram import filters
 from pyrogram.types import Message
+
+from config import SUDOERS
 from anony import app, db
-from anony.misc import SUDOERS
 
 
 @app.on_message(filters.command(["setsticker", "setpack"]) & SUDOERS)
