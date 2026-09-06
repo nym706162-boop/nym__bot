@@ -136,10 +136,10 @@ async def play_hndlr(
             cyber_queued_text = (
                 f"🎶 **{config.MUSIC_BOT_NAME} TRACK QUEUED** ⚡\n\n"
                 f"┏ 🔢 **Position:** `{position}`\n"
-                f"┣ 🎧 **Track:** `{file.title}`\n"
+                f"┣ 🎧 **Track:** [{file.title}]({file.url})\n"
                 f"┣ ⏱️ **Duration:** `{file.duration}`\n"
                 f"┣ 👤 **Requested By:** {m.from_user.mention}\n"
-                f"┗ 🌐 **Source:** [YouTube]({file.url})"
+                f"┗ 🌐 **Source:** `YouTube`"
             )
             await sent.edit_text(
                 text=cyber_queued_text,
@@ -167,12 +167,12 @@ async def play_hndlr(
     # ── [ Cyberpunk Custom Layout for Now Playing ] ──
     cyber_playing_text = (
         f"⚡ **{config.MUSIC_BOT_NAME} STREAMING LIVE** 🎶\n\n"
-        f"┏ 🎧 **Track:** `{file.title}`\n"
+        f"┏ 🎧 **Track:** [{file.title}]({file.url})\n"
         f"┣ ⏱️ **Duration:** `{file.duration}`\n"
         f"┣ 👤 **Requested By:** {mention}\n"
-        f"┗ 🌐 **Source:** [YouTube]({file.url})"
+        f"┗ 🌐 **Source:** `YouTube`"
     )
-    sent.text = cyber_playing_text  # sent මැසේජ් එකේ ටෙක්ස්ට් එක Cyberpunk ඩිසයින් එකට මාරු කරයි
+    sent.text = cyber_playing_text
     # ────────────────────────────────────────────────
 
     await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
