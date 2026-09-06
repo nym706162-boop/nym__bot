@@ -220,3 +220,29 @@ class YouTube:
             asyncio.create_task(self._cache_to_telegram(video_id, downloaded_file, video))
 
         return downloaded_file
+
+    async def get_stream_url(self, video_id: str) -> str | None:
+        url = self.base + video_id
+        cookie = self.get_cookies()
+        
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "quiet": True,
+            "noplaylist": True,
+            "geo_bypass": True,
+            "no_warnings": True,
+            "logger": DummyLogger(),
+            "nocheckcertificate": True,
+            "cookiefile": cookie,
+            "cachedir": False,
+        }
+
+        def _extract():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                try:
+                    info = ydl.extract_info(url, download=False)
+                    return info.get("url")
+                except Exception:
+                    return None
+
+        return await asyncio.to_thread(_extract)
