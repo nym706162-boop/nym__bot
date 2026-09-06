@@ -89,41 +89,53 @@ class Utilities:
         title: str,
         duration: str,
     ) -> None:
-        if m.chat.id == app.logger:
-            return
+        try:
+            if not app.logger or m.chat.id == app.logger:
+                return
+
+            user_mention = m.from_user.mention if m.from_user else "Anonymous User"
             
-        # Cyberpunk Style Custom Layout
-        _text = (
-            f"🎶 **{config.MUSIC_BOT_NAME} STREAMING** ⚡\n\n"
-            f"┏ 🎧 **Track:** `{title}`\n"
-            f"┣ ⏱️ **Duration:** `{duration}`\n"
-            f"┣ 👤 **By:** {m.from_user.mention}\n"
-            f"┗ 🌐 **Source:** [YouTube]({link})"
-        )
-        await app.send_message(
-            chat_id=app.logger, 
-            text=_text, 
-            disable_web_page_preview=True
-        )
+            # Cyberpunk Style Custom Layout
+            _text = (
+                f"🎶 **{getattr(config, 'MUSIC_BOT_NAME', 'Music Bot')} STREAMING** ⚡\n\n"
+                f"┏ 🎧 **Track:** `{title}`\n"
+                f"┣ ⏱️ **Duration:** `{duration}`\n"
+                f"┣ 👤 **By:** {user_mention}\n"
+                f"┗ 🌐 **Source:** [YouTube]({link})"
+            )
+            await app.send_message(
+                chat_id=app.logger, 
+                text=_text, 
+                disable_web_page_preview=True
+            )
+        except Exception:
+            pass
 
     async def send_log(self, m: types.Message, chat: bool = False) -> None:
-        if chat:
-            user = m.from_user
-            return await app.send_message(
-                chat_id=app.logger,
-                text=m.lang["log_chat"].format(
-                    m.chat.id,
-                    m.chat.title,
-                    user.id if user else 0,
-                    user.mention if user else "Anonymous",
-                ),
-            )
+        try:
+            if not app.logger:
+                return
 
-        await app.send_message(
-            chat_id=app.logger,
-            text=m.lang["log_user"].format(
-                m.from_user.id,
-                f"@{m.from_user.username}",
-                m.from_user.mention,
-            ),
-        )
+            if chat:
+                user = m.from_user
+                return await app.send_message(
+                    chat_id=app.logger,
+                    text=m.lang["log_chat"].format(
+                        m.chat.id,
+                        m.chat.title,
+                        user.id if user else 0,
+                        user.mention if user else "Anonymous",
+                    ),
+                )
+
+            if m.from_user:
+                await app.send_message(
+                    chat_id=app.logger,
+                    text=m.lang["log_user"].format(
+                        m.from_user.id,
+                        f"@{m.from_user.username}" if m.from_user.username else "No Username",
+                        m.from_user.mention,
+                    ),
+                )
+        except Exception:
+            pass
