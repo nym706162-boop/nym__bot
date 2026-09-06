@@ -82,3 +82,55 @@ mv sample.env .env
 # Start the bot
 uv run python3 -m anony</code></pre>
 </details>
+
+<details>
+    <summary><b>Deploy to Heroku</b></summary>
+    <br>
+    <p>Click on the button below to deploy on Heroku:</p>
+    <a href="https://dashboard.heroku.com/new?template=https://github.com/nym706162-boop/nym__bot">
+        <img src="https://img.shields.io/badge/Deploy%20On%20Heroku-black?style=for-the-badge&logo=heroku" alt="Heroku"/>
+    </a>
+</details>
+
+<hr>
+
+<h2>⚙️ Environment Variables (.env)</h2>
+
+<p>Configure these values in your <code>.env</code> file or host environment settings:</p>
+
+<pre><code>API_ID=123456
+API_HASH=abcdef1234567890
+BOT_TOKEN=123456:ABC-DEF
+OWNER_ID=123456789
+LOGGER_ID=-1001234567890
+MONGO_URL=mongodb+srv://
+SESSION=BQgfh...AA</code></pre>
+
+<hr>
+
+<h2>🧐 Usage Commands</h2>
+
+<p>1. Add the bot to your Telegram group.<br>
+2. Promote it to <b>admin</b> with invite users permission.<br>
+3. Use commands in the chat to control playback:</p>
+
+<pre><code>/play [song name or link] -> Play audio in the videochat
+/vplay [song name or link] -> Play video in the videochat
+/pause -> Pause playback
+/resume -> Resume playback
+/skip -> Skip to next track
+/stop -> Stop playback
+/seek -> Seeks the stream
+/queue -> Show queue</code></pre>
+
+<hr>
+
+<h2>🗒️ License</h2>
+
+<p>This project is licensed under the <b>MIT License</b> — see <a href="https://github.com/nym706162-boop/nym__bot/blob/master/LICENSE">LICENSE</a> for details.</p>
+
+<hr>
+
+<div align="center">
+    ⭐ Enjoying the tunes? <b>Star the repo</b> — feedback keeps the rhythm going!
+</div>
