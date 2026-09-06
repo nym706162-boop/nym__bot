@@ -7,7 +7,7 @@ from ntgcalls import (ConnectionNotFound, TelegramServerError,
                      RTMPStreamingUnsupported, ConnectionError,
                      TransportParseException)
 from pyrogram.errors import (ChatSendMediaForbidden, ChatSendPhotosForbidden,
-                           MessageIdInvalid)
+                             MessageIdInvalid)
 from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
@@ -71,7 +71,7 @@ class TgCall(PyTgCalls):
         message: Message,
         media: Media | Track,
         seek_time: int = 0,
-    ) -> None:
+    ) -> Media | Track | None:
         client = await db.get_assistant(chat_id)
         _lang = await lang.get_lang(chat_id)
         _thumb = (
@@ -80,9 +80,14 @@ class TgCall(PyTgCalls):
             else config.DEFAULT_THUMB
         ) if config.THUMB_GEN else None
 
-        if not media.file_path:
+        if not getattr(media, "file_path", None):
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
-            return await self.play_next(chat_id)
+            await self.play_next(chat_id)
+            return None
+
+        # Safe fallback for file_id attribute to prevent AttributeError
+        if not hasattr(media, "file_id"):
+            media.file_id = None
 
         stream = types.MediaStream(
             media_path=media.file_path,
@@ -91,7 +96,7 @@ class TgCall(PyTgCalls):
             audio_flags=types.MediaStream.Flags.REQUIRED,
             video_flags=(
                 types.MediaStream.Flags.AUTO_DETECT
-                if media.video
+                if getattr(media, "video", False)
                 else types.MediaStream.Flags.IGNORE
             ),
             ffmpeg_parameters=f"-ss {seek_time}" if seek_time > 1 else None,
@@ -109,10 +114,10 @@ class TgCall(PyTgCalls):
                 media.time = 1
                 await db.add_call(chat_id)
                 text = _lang["play_media"].format(
-                    media.url,
-                    media.title,
-                    media.duration,
-                    media.user,
+                    getattr(media, "url", ""),
+                    getattr(media, "title", "Track"),
+                    getattr(media, "duration", "00:00"),
+                    getattr(media, "user", "User"),
                 )
                 keyboard = buttons.controls(chat_id)
                 try:
@@ -141,6 +146,7 @@ class TgCall(PyTgCalls):
                             reply_markup=keyboard,
                         )
                     media.message_id = sent.id
+            return media
         except FileNotFoundError:
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             await self.play_next(chat_id)
@@ -157,12 +163,15 @@ class TgCall(PyTgCalls):
         except RTMPStreamingUnsupported:
             await self.stop(chat_id)
             await message.edit_text(_lang["error_rtmp"])
+        return None
 
     async def replay(self, chat_id: int) -> None:
         if not await db.get_call(chat_id):
             return
 
         media = queue.get_current(chat_id)
+        if not media:
+            return
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
         media.message_id = msg.id
@@ -174,8 +183,11 @@ class TgCall(PyTgCalls):
             return await self.replay(chat_id)
 
         media = queue.get_next(chat_id)
+        if not media:
+            return await self.stop(chat_id)
+
         try:
-            if media.message_id:
+            if getattr(media, "message_id", 0):
                 await app.delete_messages(
                     chat_id=chat_id,
                     message_ids=media.message_id,
@@ -185,13 +197,10 @@ class TgCall(PyTgCalls):
         except Exception:
             pass
 
-        if not media:
-            return await self.stop(chat_id)
-
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
-        if not media.file_path:
-            media.file_path = await yt.download(media.id, video=media.video)
+        if not getattr(media, "file_path", None):
+            media.file_path = await yt.download(media.id, video=getattr(media, "video", False))
             if not media.file_path:
                 await self.play_next(chat_id)
                 return await msg.edit_text(
@@ -203,7 +212,7 @@ class TgCall(PyTgCalls):
 
     async def ping(self) -> float:
         pings = [client.ping for client in self.clients]
-        return round(sum(pings) / len(pings), 2)
+        return round(sum(pings) / len(pings), 2) if pings else 0.0
 
     async def decorators(self, client: PyTgCalls) -> None:
         @client.on_update()
