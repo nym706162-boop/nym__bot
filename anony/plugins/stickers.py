@@ -1,9 +1,10 @@
 from pyrogram import filters
 from pyrogram.types import Message
 from anony import app, db
+from anony.misc import SUDOERS
 
 
-@app.on_message(filters.command(["setsticker", "setpack"]) & app.sudoers)
+@app.on_message(filters.command(["setsticker", "setpack"]) & SUDOERS)
 async def set_global_pack_cmd(client, message: Message):
     pack_name = None
 
