@@ -7,29 +7,6 @@ from anony import anon, app, config, db, lang, queue, tg, yt
 from anony.helpers import buttons, utils
 from anony.helpers._play import checkUB
 
-# ── [ Sticker Pack Management Variables ] ──
-CURRENT_STICKER_PACK = "Sanlymaaa"
-
-
-@app.on_message(filters.command("setsticker") & filters.group)
-async def set_sticker_pack(_, message: types.Message):
-    if message.from_user.id not in app.sudoers:
-        return await message.reply_text("❌ This command is only for Sudo users!")
-
-    global CURRENT_STICKER_PACK
-    if len(message.command) < 2:
-        return await message.reply_text(
-            f"⚡ <b>Current Sticker Pack:</b> <code>{CURRENT_STICKER_PACK}</code>\n\n"
-            f"👉 <b>Usage:</b> <code>/setsticker &lt;pack_name&gt;</code>\n"
-            f"(Example: <code>/setsticker Sanlymaaa</code>)"
-        )
-
-    pack_name = message.command[1]
-    CURRENT_STICKER_PACK = pack_name
-    await message.reply_text(
-        f"✅ <b>Sticker pack successfully updated to:</b> <code>{pack_name}</code>"
-    )
-
 
 def playlist_to_queue(chat_id: int, tracks: list) -> str:
     text = "<blockquote expandable>"
@@ -57,8 +34,8 @@ async def play_hndlr(
 ) -> None:
     sent = await m.reply_text(m.lang["play_searching"])
 
-    # ── [ Database Dynamic Sticker Pack Logic ] ──
-    pack_name = await db.get_sticker_pack(m.chat.id)
+    # ── [ Global Sticker Pack Trigger ] ──
+    pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
     if pack_name:
         try:
             sticker_set = await app.get_sticker_set(pack_name)
@@ -68,8 +45,8 @@ async def play_hndlr(
                     chat_id=m.chat.id, sticker=random_sticker.file_id
                 )
         except Exception as e:
-            print(f"Random Sticker Error: {e}")
-    # ───────────────────────────────────────────────
+            print(f"Global Sticker Error: {e}")
+    # ─────────────────────────────────────
 
     file = None
     mention = m.from_user.mention
