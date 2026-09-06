@@ -57,16 +57,19 @@ async def play_hndlr(
 ) -> None:
     sent = await m.reply_text(m.lang["play_searching"])
 
-    # ── [ Random Sticker Sender Feature ] ──
-    try:
-        global CURRENT_STICKER_PACK
-        st_set = await app.get_sticker_set(CURRENT_STICKER_PACK)
-        if st_set and st_set.stickers:
-            random_sticker = random.choice(st_set.stickers)
-            await app.send_sticker(chat_id=m.chat.id, sticker=random_sticker.file_id)
-    except Exception:
-        pass
-    # ───────────────────────────────────────
+    # ── [ Database Dynamic Sticker Pack Logic ] ──
+    pack_name = await db.get_sticker_pack(m.chat.id)
+    if pack_name:
+        try:
+            sticker_set = await app.get_sticker_set(pack_name)
+            if sticker_set and sticker_set.stickers:
+                random_sticker = random.choice(sticker_set.stickers)
+                await app.send_sticker(
+                    chat_id=m.chat.id, sticker=random_sticker.file_id
+                )
+        except Exception as e:
+            print(f"Random Sticker Error: {e}")
+    # ───────────────────────────────────────────────
 
     file = None
     mention = m.from_user.mention
