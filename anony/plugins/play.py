@@ -134,12 +134,12 @@ async def play_hndlr(
         if position != 0 or await db.get_call(m.chat.id):
             # Cyberpunk Custom Layout for Queued Tracks
             cyber_queued_text = (
-                f"🎶 **{config.MUSIC_BOT_NAME} TRACK QUEUED** ⚡\n\n"
-                f"┏ 🔢 **Position:** `{position}`\n"
-                f"┣ 🎧 **Track:** [{file.title}]({file.url})\n"
-                f"┣ ⏱️ **Duration:** `{file.duration}`\n"
-                f"┣ 👤 **Requested By:** {m.from_user.mention}\n"
-                f"┗ 🌐 **Source:** `YouTube`"
+                f"🎶 <b>{config.MUSIC_BOT_NAME} TRACK QUEUED</b> ⚡\n\n"
+                f"┏ 🔢 <b>Position:</b> <code>{position}</code>\n"
+                f"┣ 🎧 <b>Track:</b> <a href='{file.url}'>{file.title}</a>\n"
+                f"┣ ⏱️ <b>Duration:</b> <code>{file.duration}</code>\n"
+                f"┣ 👤 <b>Requested By:</b> {m.from_user.mention}\n"
+                f"┗ 🌐 <b>Source:</b> <code>YouTube</code>"
             )
             await sent.edit_text(
                 text=cyber_queued_text,
@@ -166,11 +166,11 @@ async def play_hndlr(
 
     # ── [ Cyberpunk Custom Layout for Now Playing ] ──
     cyber_playing_text = (
-        f"⚡ **{config.MUSIC_BOT_NAME} STREAMING LIVE** 🎶\n\n"
-        f"┏ 🎧 **Track:** [{file.title}]({file.url})\n"
-        f"┣ ⏱️ **Duration:** `{file.duration}`\n"
-        f"┣ 👤 **Requested By:** {mention}\n"
-        f"┗ 🌐 **Source:** `YouTube`"
+        f"⚡ <b>{config.MUSIC_BOT_NAME} STREAMING LIVE</b> 🎶\n\n"
+        f"┏ 🎧 <b>Track:</b> <a href='{file.url}'>{file.title}</a>\n"
+        f"┣ ⏱️ <b>Duration:</b> <code>{file.duration}</code>\n"
+        f"┣ 👤 <b>Requested By:</b> {mention}\n"
+        f"┗ 🌐 <b>Source:</b> <code>YouTube</code>"
     )
     sent.text = cyber_playing_text
     # ────────────────────────────────────────────────
