@@ -34,17 +34,23 @@ async def play_hndlr(
 ) -> None:
     sent = await m.reply_text(m.lang["play_searching"])
 
-    # ── [ Global Sticker Pack Trigger ] ──
+    # ── [ Debugging Global Sticker Trigger ] ──
     try:
         pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
+        print(f"DEBUG: Retrieved Pack Name from DB -> {pack_name}")
+        
         if pack_name:
             sticker_set = await app.get_sticker_set(pack_name)
             if sticker_set and sticker_set.stickers:
                 random_sticker = random.choice(sticker_set.stickers)
                 await m.reply_sticker(random_sticker.file_id)
+            else:
+                print("DEBUG: Sticker set is empty or invalid.")
+        else:
+            print("DEBUG: No pack_name found in Database!")
     except Exception as e:
-        print(f"Global Sticker Error: {e}")
-    # ─────────────────────────────────────
+        print(f"DEBUG Error: {e}")
+    # ──────────────────────────────────────────
 
     file = None
     mention = m.from_user.mention
