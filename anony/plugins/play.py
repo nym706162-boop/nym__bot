@@ -2,7 +2,6 @@ import random
 from pathlib import Path
 
 from pyrogram import filters, types
-from pyrogram.types import InputMediaPhoto
 
 from anony import anon, app, config, db, lang, queue, tg, yt
 from anony.helpers import buttons, utils
@@ -175,6 +174,16 @@ async def play_hndlr(
     except Exception as play_err:
         print(f"Play Media Warning: {play_err}")
 
+    # Fetch correct stream markup buttons from helpers
+    play_buttons = None
+    for btn_func in ["stream_markup", "markup_stream", "telegram_markup", "stream_buttons"]:
+        if hasattr(buttons, btn_func):
+            try:
+                play_buttons = getattr(buttons, btn_func)(m.chat.id, file.id)
+                break
+            except Exception:
+                pass
+
     # Display Photo Card UI with Buttons
     thumb = getattr(file, "thumb", None) or getattr(file, "url", None)
     try:
@@ -183,12 +192,12 @@ async def play_hndlr(
             await m.reply_photo(
                 photo=thumb,
                 caption=cyber_playing_text,
-                reply_markup=buttons.stream_markup(m.chat.id, file.id) if hasattr(buttons, "stream_markup") else None,
+                reply_markup=play_buttons,
             )
         else:
             await m.reply_text(
                 text=cyber_playing_text,
-                reply_markup=buttons.stream_markup(m.chat.id, file.id) if hasattr(buttons, "stream_markup") else None,
+                reply_markup=play_buttons,
             )
     except Exception as img_err:
         print(f"Photo Card Display Warning: {img_err}")
