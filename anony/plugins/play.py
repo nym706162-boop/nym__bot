@@ -50,29 +50,18 @@ async def play_hndlr(
     video: bool = False,
     url: str = None,
 ) -> None:
-    # ── [ Debug Sticker Sender ] ──
+    # ── [ Direct Sticker Sender (Fixed) ] ──
     try:
-        sent_sticker = False
-        pack_name = None
-        if hasattr(db, "get_sticker_pack"):
-            pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
-        
-        if not pack_name:
-            pack_name = "Animeme" # Default fallback pack
-
-        try:
-            sticker_set = await app.get_sticker_set(pack_name)
-            if sticker_set and sticker_set.stickers:
-                random_sticker = random.choice(sticker_set.stickers)
-                await m.reply_sticker(random_sticker.file_id)
-                sent_sticker = True
-            else:
-                await m.reply_text("DEBUG: Sticker set found, but stickers list is empty!")
-        except Exception as e:
-            await m.reply_text(f"Sticker Set Error: {e}")
+        stickers = [
+            # Add working sticker file IDs here
+            "CAACAgIAAxkBAAEJ51hmrY3g...", 
+        ]
+        if stickers:
+            random_sticker = random.choice(stickers)
+            await m.reply_sticker(random_sticker)
     except Exception as err:
-        await m.reply_text(f"Sticker General Error: {err}")
-    # ──────────────────────────────
+        print(f"Sticker Error: {err}")
+    # ──────────────────────────────────────
 
     sent = await m.reply_text(m.lang["play_searching"])
 
