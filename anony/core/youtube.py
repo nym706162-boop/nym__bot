@@ -132,23 +132,27 @@ class YouTube:
             if not log_id or not os.path.exists(file_path):
                 return
 
+            file_id = None
             if video:
                 sent = await app.send_video(
                     chat_id=log_id,
                     video=file_path,
                     caption=f"🎥 Cached Video ID: `{video_id}`",
                 )
-                file_id = sent.video.file_id
+                if sent and sent.video:
+                    file_id = sent.video.file_id
             else:
                 sent = await app.send_audio(
                     chat_id=log_id,
                     audio=file_path,
                     caption=f"🎵 Cached Audio ID: `{video_id}`",
                 )
-                file_id = sent.audio.file_id
+                if sent and sent.audio:
+                    file_id = sent.audio.file_id
 
-            await db.add_cached_track(video_id, file_id)
-            logger.info(f"Successfully cached {video_id} to Telegram Log Channel.")
+            if file_id:
+                await db.add_cached_track(video_id, file_id)
+                logger.info(f"Successfully cached {video_id} to Telegram Log Channel.")
         except Exception as e:
             logger.error(f"Error caching track to Telegram: {e}")
 
