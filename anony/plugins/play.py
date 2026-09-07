@@ -50,18 +50,13 @@ async def play_hndlr(
     video: bool = False,
     url: str = None,
 ) -> None:
-    # ── [ Direct Sticker Sender (Fixed) ] ──
+    # ── [ Call HTTP GET Sticker Function ] ──
     try:
-        stickers = [
-            # Add working sticker file IDs here
-            "CAACAgIAAxkBAAEJ51hmrY3g...", 
-        ]
-        if stickers:
-            random_sticker = random.choice(stickers)
-            await m.reply_sticker(random_sticker)
-    except Exception as err:
-        print(f"Sticker Error: {err}")
-    # ──────────────────────────────────────
+        from anony.plugins.sticker import send_random_sticker
+        await send_random_sticker(m)
+    except Exception:
+        pass
+    # ────────────────────────────────────────
 
     sent = await m.reply_text(m.lang["play_searching"])
 
