@@ -105,8 +105,12 @@ async def play_hndlr(
             m.lang["play_duration_limit"].format(config.DURATION_LIMIT // 60)
         )
 
-    if await db.is_logger():
-        await utils.play_log(m, sent.link, getattr(file, "title", "Track"), getattr(file, "duration", "00:00"))
+    # Safe play logging
+    try:
+        if await db.is_logger() and hasattr(utils, "play_log"):
+            await utils.play_log(m, sent.link, getattr(file, "title", "Track"), getattr(file, "duration", "00:00"))
+    except Exception:
+        pass
 
     file.user = mention
     if force:
@@ -140,7 +144,7 @@ async def play_hndlr(
                 )
             return
 
-    # Cache හෝ YouTube මඟින් File Path සකස් කිරීම
+    # Setup File Path via Cache or YouTube
     if not getattr(file, "file_path", None):
         if getattr(file, "file_id", None):
             try:
@@ -151,7 +155,7 @@ async def play_hndlr(
                 )
             except Exception as cache_err:
                 print(f"Cache download warning: {cache_err}")
-                file.file_id = None # Fallback to YouTube if telegram download fails
+                file.file_id = None
 
         if not getattr(file, "file_path", None):
             fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
@@ -185,9 +189,8 @@ async def play_hndlr(
     if hasattr(db, "set_audio_cache") and file_id_to_save and getattr(file, "id", None):
         try:
             await db.set_audio_cache(file.id, file_id_to_save)
-            print(f"DEBUG: Saved to DB Cache successfully! Vid ID: {file.id} -> File ID: {file_id_to_save}")
-        except Exception as cache_err:
-            print(f"Cache Warning: {cache_err}")
+        except Exception:
+            pass
 
     if not tracks:
         return
