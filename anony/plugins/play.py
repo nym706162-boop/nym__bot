@@ -98,6 +98,7 @@ async def play_hndlr(
         cached_file_id = await db.get_audio_cache(file.id)
         if cached_file_id:
             file.file_id = cached_file_id
+            print(f"DEBUG: Track loaded from Database Cache! ID: {cached_file_id}")
 
     if getattr(file, "duration_sec", 0) > config.DURATION_LIMIT:
         return await sent.edit_text(
@@ -139,16 +140,27 @@ async def play_hndlr(
                 )
             return
 
-    # Download logic execution
-    if not getattr(file, "file_path", None) and not getattr(file, "file_id", None):
-        fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
-        if Path(fname).exists():
-            file.file_path = fname
-        else:
-            await sent.edit_text(m.lang["play_downloading"])
-            file.file_path = await yt.download(file.id, video=video)
+    # Cache හෝ YouTube මඟින් File Path සකස් කිරීම
+    if not getattr(file, "file_path", None):
+        if getattr(file, "file_id", None):
+            try:
+                await sent.edit_text("Processing from cache...")
+                file.file_path = await app.download_media(
+                    file.file_id, 
+                    file_name=f"downloads/{file.id}.{'mp4' if video else 'webm'}"
+                )
+            except Exception as cache_err:
+                print(f"Cache download warning: {cache_err}")
+                file.file_id = None # Fallback to YouTube if telegram download fails
 
-    # Bot එකේ original play_media function එක හරහාම UI එක Load වීමට sent text එක සකස් කිරීම
+        if not getattr(file, "file_path", None):
+            fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
+            if Path(fname).exists():
+                file.file_path = fname
+            else:
+                await sent.edit_text(m.lang["play_downloading"])
+                file.file_path = await yt.download(file.id, video=video)
+
     cyber_playing_text = (
         f"<b><a href='{getattr(file, 'url', '')}'>| Started streaming</a></b>\n\n"
         f"<b>Title:</b> {getattr(file, 'title', 'Track')}\n\n"
@@ -160,21 +172,22 @@ async def play_hndlr(
     if not hasattr(file, "file_id"):
         file.file_id = None
 
-    # Call to play media (මෙයින් bot එකම thumbnail සමඟ UI එක සහ buttons සකස් කරයි)
+    # Call to play media
     played_media = None
     try:
         played_media = await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     except Exception as play_err:
-        print(f"Play Media Warning: {play_err}")
-        return await sent.edit_text(f"Download failed.\n\nIf the issue persists, report it to the support chat")
+        print(f"Play Media Error: {play_err}")
+        return await sent.edit_text(f"Playback failed: {play_err}")
 
     # Save Telegram file_id to Cache
     file_id_to_save = getattr(file, "file_id", None) or getattr(played_media, "file_id", None)
     if hasattr(db, "set_audio_cache") and file_id_to_save and getattr(file, "id", None):
         try:
             await db.set_audio_cache(file.id, file_id_to_save)
-        except Exception:
-            pass
+            print(f"DEBUG: Saved to DB Cache successfully! Vid ID: {file.id} -> File ID: {file_id_to_save}")
+        except Exception as cache_err:
+            print(f"Cache Warning: {cache_err}")
 
     if not tracks:
         return
