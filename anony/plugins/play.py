@@ -2,6 +2,7 @@ import random
 from pathlib import Path
 
 from pyrogram import filters, types
+from pyrogram.types import InputMediaPhoto
 
 from anony import anon, app, config, db, lang, queue, tg, yt
 from anony.helpers import buttons, utils
@@ -154,14 +155,12 @@ async def play_hndlr(
             await sent.edit_text(m.lang["play_downloading"])
             file.file_path = await yt.download(file.id, video=video)
 
+    # Captions & Text Layout Setup
     cyber_playing_text = (
-        f"🎶 <b>{config.MUSIC_BOT_NAME} • NOW PLAYING</b>\n"
-        f"────────────────────────\n"
-        f"🎵 <b>Track    :</b> <a href='{getattr(file, 'url', '')}'>{getattr(file, 'title', 'Track')}</a>\n"
-        f"⏳ <b>Duration :</b> <code>{getattr(file, 'duration', '00:00')}</code>\n"
-        f"👤 <b>Requested:</b> {mention}\n"
-        f"📡 <b>Source   :</b> <code>YouTube</code>\n"
-        f"────────────────────────"
+        f"<b><a href='{getattr(file, 'url', '')}'>| Started streaming</a></b>\n\n"
+        f"<b>Title:</b> {getattr(file, 'title', 'Track')}\n\n"
+        f"<b>Duration:</b> {getattr(file, 'duration', '00:00')} min\n"
+        f"<b>Requested by:</b> {mention}"
     )
     sent.text = cyber_playing_text
 
@@ -175,6 +174,24 @@ async def play_hndlr(
         played_media = await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     except Exception as play_err:
         print(f"Play Media Warning: {play_err}")
+
+    # Display Photo Card UI with Buttons
+    thumb = getattr(file, "thumb", None) or getattr(file, "url", None)
+    try:
+        await sent.delete()
+        if thumb:
+            await m.reply_photo(
+                photo=thumb,
+                caption=cyber_playing_text,
+                reply_markup=buttons.stream_markup(m.chat.id, file.id) if hasattr(buttons, "stream_markup") else None,
+            )
+        else:
+            await m.reply_text(
+                text=cyber_playing_text,
+                reply_markup=buttons.stream_markup(m.chat.id, file.id) if hasattr(buttons, "stream_markup") else None,
+            )
+    except Exception as img_err:
+        print(f"Photo Card Display Warning: {img_err}")
 
     # Check and save Telegram file_id
     file_id_to_save = getattr(file, "file_id", None) or getattr(played_media, "file_id", None)
