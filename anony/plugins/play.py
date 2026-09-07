@@ -7,6 +7,12 @@ from anony import anon, app, config, db, lang, queue, tg, yt
 from anony.helpers import buttons, utils
 from anony.helpers._play import checkUB
 
+# Monkeypatch missing play_log attribute to prevent core library crashes
+if not hasattr(utils, "play_log"):
+    async def _dummy_play_log(*args, **kwargs):
+        pass
+    utils.play_log = _dummy_play_log
+
 
 def playlist_to_queue(chat_id: int, tracks: list) -> str:
     text = "<blockquote expandable>"
