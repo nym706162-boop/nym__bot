@@ -106,6 +106,12 @@ class MongoDB:
             upsert=True,
         )
 
+    async def get_cached_track(self, vid_id: str) -> str | None:
+        return await self.get_audio_cache(vid_id)
+
+    async def add_cached_track(self, vid_id: str, telegram_file_id: str) -> None:
+        await self.set_audio_cache(vid_id, telegram_file_id)
+
     # AUTH METHODS
     async def _get_auth(self, chat_id: int) -> set[int]:
         if chat_id not in self.auth:
