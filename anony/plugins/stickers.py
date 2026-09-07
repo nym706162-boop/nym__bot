@@ -1,7 +1,9 @@
+import aiohttp
+import random
 from pyrogram import filters
 from pyrogram.types import Message
 
-from anony import app, db
+from anony import app, db, config
 
 
 # Custom filter to check sudo users safely
@@ -32,3 +34,31 @@ async def set_global_pack_cmd(client, message: Message):
     await message.reply_text(
         f"✅ **Global Sticker Pack set for all groups:** <code>{pack_name}</code>"
     )
+
+
+# Function to fetch sticker pack using HTTP GET Request
+async def send_random_sticker(message: Message):
+    try:
+        pack_name = None
+        if hasattr(db, "get_sticker_pack"):
+            pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
+        
+        if not pack_name:
+            pack_name = "Animals"  # Default pack if not found in database
+
+        # Telegram Bot API GET URL
+        url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/getStickerSet?name={pack_name}"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("ok"):
+                        stickers = data["result"]["set"]["stickers"]
+                        if stickers:
+                            random_sticker = random.choice(stickers)
+                            await message.reply_sticker(random_sticker["file_id"])
+                            return True
+    except Exception as e:
+        print(f"GET Sticker Error: {e}")
+    return False
