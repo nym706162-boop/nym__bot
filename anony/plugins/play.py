@@ -2,7 +2,6 @@ import random
 from pathlib import Path
 
 from pyrogram import filters, types
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from anony import anon, app, config, db, lang, queue, tg, yt
 from anony.helpers import buttons, utils
@@ -149,70 +148,25 @@ async def play_hndlr(
             await sent.edit_text(m.lang["play_downloading"])
             file.file_path = await yt.download(file.id, video=video)
 
-    # Captions & Text Layout Setup
+    # Bot එකේ original play_media function එක හරහාම UI එක Load වීමට sent text එක සකස් කිරීම
     cyber_playing_text = (
         f"<b><a href='{getattr(file, 'url', '')}'>| Started streaming</a></b>\n\n"
         f"<b>Title:</b> {getattr(file, 'title', 'Track')}\n\n"
         f"<b>Duration:</b> {getattr(file, 'duration', '00:00')} min\n"
         f"<b>Requested by:</b> {mention}"
     )
+    sent.text = cyber_playing_text
 
     if not hasattr(file, "file_id"):
         file.file_id = None
 
-    # Build Buttons manually if helper function fails
-    play_buttons = None
-    for btn_func in ["stream_markup", "markup_stream", "telegram_markup"]:
-        if hasattr(buttons, btn_func):
-            try:
-                play_buttons = getattr(buttons, btn_func)(m.chat.id, file.id)
-                break
-            except Exception:
-                pass
-
-    if not play_buttons:
-        play_buttons = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        text=f"00:00 | ────────⚪️ | {getattr(file, 'duration', '00:00')}",
-                        callback_data="PlayerTimer"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(text="⏮", callback_data=f"ADMIN Skip|{m.chat.id}"),
-                    InlineKeyboardButton(text="◀️", callback_data=f"ADMIN Pause|{m.chat.id}"),
-                    InlineKeyboardButton(text="⏹", callback_data=f"ADMIN Stop|{m.chat.id}"),
-                    InlineKeyboardButton(text="▶️", callback_data=f"ADMIN Resume|{m.chat.id}"),
-                    InlineKeyboardButton(text="⏭", callback_data=f"ADMIN Skip|{m.chat.id}"),
-                ]
-            ]
-        )
-
-    # 1. DELETE OLD TEXT AND SEND THE PHOTO CARD FIRST
-    thumb = getattr(file, "thumb", None) or getattr(file, "url", None)
-    try:
-        await sent.delete()
-        if thumb:
-            sent = await m.reply_photo(
-                photo=thumb,
-                caption=cyber_playing_text,
-                reply_markup=play_buttons,
-            )
-        else:
-            sent = await m.reply_text(
-                text=cyber_playing_text,
-                reply_markup=play_buttons,
-            )
-    except Exception as img_err:
-        print(f"Photo Card Display Warning: {img_err}")
-
-    # 2. NOW CALL PLAY_MEDIA WITH THE NEW IMAGE MESSAGE
+    # Call to play media (මෙයින් bot එකම thumbnail සමඟ UI එක සහ buttons සකස් කරයි)
     played_media = None
     try:
         played_media = await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     except Exception as play_err:
         print(f"Play Media Warning: {play_err}")
+        return await sent.edit_text(f"Download failed.\n\nIf the issue persists, report it to the support chat")
 
     # Save Telegram file_id to Cache
     file_id_to_save = getattr(file, "file_id", None) or getattr(played_media, "file_id", None)
