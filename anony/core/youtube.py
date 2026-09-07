@@ -139,16 +139,22 @@ class YouTube:
                     video=file_path,
                     caption=f"🎥 Cached Video ID: `{video_id}`",
                 )
-                if sent and sent.video:
-                    file_id = sent.video.file_id
+                if sent:
+                    if sent.video:
+                        file_id = sent.video.file_id
+                    elif sent.document:
+                        file_id = sent.document.file_id
             else:
                 sent = await app.send_audio(
                     chat_id=log_id,
                     audio=file_path,
                     caption=f"🎵 Cached Audio ID: `{video_id}`",
                 )
-                if sent and sent.audio:
-                    file_id = sent.audio.file_id
+                if sent:
+                    if sent.audio:
+                        file_id = sent.audio.file_id
+                    elif sent.document:
+                        file_id = sent.document.file_id
 
             if file_id:
                 await db.add_cached_track(video_id, file_id)
