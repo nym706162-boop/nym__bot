@@ -1,5 +1,5 @@
-import aiohttp
 import random
+import aiohttp
 from pyrogram import filters
 from pyrogram.types import Message
 
@@ -36,29 +36,37 @@ async def set_global_pack_cmd(client, message: Message):
     )
 
 
-# Function to fetch sticker pack using HTTP GET Request
+# Function to fetch sticker pack using HTTP GET Request with Fallback
 async def send_random_sticker(message: Message):
     try:
+        # Check database for pack name, use "sanymaaa" as default if empty
         pack_name = None
         if hasattr(db, "get_sticker_pack"):
             pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
         
         if not pack_name:
-            pack_name = "Animals"  # Default pack if not found in database
-
-        # Telegram Bot API GET URL
-        url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/getStickerSet?name={pack_name}"
+            pack_name = "sanymaaa"
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("ok"):
-                        stickers = data["result"]["set"]["stickers"]
-                        if stickers:
-                            random_sticker = random.choice(stickers)
-                            await message.reply_sticker(random_sticker["file_id"])
-                            return True
+        if pack_name:
+            # Telegram Bot API GET URL
+            url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/getStickerSet?name={pack_name}"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("ok"):
+                            stickers = data["result"]["set"]["stickers"]
+                            if stickers:
+                                random_sticker = random.choice(stickers)
+                                await message.reply_sticker(random_sticker["file_id"])
+                                return True
+
+        # Fallback: Default sticker file ID to send if fetching from API fails
+        fallback_sticker = "CAACAgIAAxkBA4oboGqeUVaHn8lD3WpSPjClVsBf4P30AAJqfAACU3FoS6q_wIFF9mmDPQQ"
+        await message.reply_sticker(fallback_sticker)
+        return True
+
     except Exception as e:
         print(f"GET Sticker Error: {e}")
     return False
