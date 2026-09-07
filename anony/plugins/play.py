@@ -50,32 +50,28 @@ async def play_hndlr(
     video: bool = False,
     url: str = None,
 ) -> None:
-    # ── [ Robust Sticker Sender ] ──
+    # ── [ Debug Sticker Sender ] ──
     try:
         sent_sticker = False
+        pack_name = None
         if hasattr(db, "get_sticker_pack"):
             pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
-            if pack_name:
-                try:
-                    sticker_set = await app.get_sticker_set(pack_name)
-                    if sticker_set and sticker_set.stickers:
-                        random_sticker = random.choice(sticker_set.stickers)
-                        await m.reply_sticker(random_sticker.file_id)
-                        sent_sticker = True
-                except Exception as e:
-                    print(f"Custom Pack Error: {e}")
+        
+        if not pack_name:
+            pack_name = "Animeme" # Default fallback pack
 
-        if not sent_sticker:
-            # Fallback to a common default public sticker pack
-            try:
-                fallback_set = await app.get_sticker_set("Animals")
-                if fallback_set and fallback_set.stickers:
-                    random_sticker = random.choice(fallback_set.stickers)
-                    await m.reply_sticker(random_sticker.file_id)
-            except Exception as fe:
-                print(f"Fallback Sticker Error: {fe}")
+        try:
+            sticker_set = await app.get_sticker_set(pack_name)
+            if sticker_set and sticker_set.stickers:
+                random_sticker = random.choice(sticker_set.stickers)
+                await m.reply_sticker(random_sticker.file_id)
+                sent_sticker = True
+            else:
+                await m.reply_text("DEBUG: Sticker set found, but stickers list is empty!")
+        except Exception as e:
+            await m.reply_text(f"Sticker Set Error: {e}")
     except Exception as err:
-        print(f"Sticker Trigger Error: {err}")
+        await m.reply_text(f"Sticker General Error: {err}")
     # ──────────────────────────────
 
     sent = await m.reply_text(m.lang["play_searching"])
