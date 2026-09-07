@@ -50,27 +50,33 @@ async def play_hndlr(
     video: bool = False,
     url: str = None,
 ) -> None:
-    # ── [ Global Sticker Pack Trigger with Debug ] ──
+    # ── [ Robust Sticker Sender ] ──
     try:
-        pack_name = None
+        sent_sticker = False
         if hasattr(db, "get_sticker_pack"):
             pack_name = await db.get_sticker_pack("GLOBAL_STICKER_PACK")
-        
-        if not pack_name:
-            pack_name = "Animals" # Default fallback sticker pack
+            if pack_name:
+                try:
+                    sticker_set = await app.get_sticker_set(pack_name)
+                    if sticker_set and sticker_set.stickers:
+                        random_sticker = random.choice(sticker_set.stickers)
+                        await m.reply_sticker(random_sticker.file_id)
+                        sent_sticker = True
+                except Exception as e:
+                    print(f"Custom Pack Error: {e}")
 
-        try:
-            sticker_set = await app.get_sticker_set(pack_name)
-            if sticker_set and getattr(sticker_set, "stickers", None):
-                random_sticker = random.choice(sticker_set.stickers)
-                await m.reply_sticker(random_sticker.file_id)
-            else:
-                print(f"DEBUG: Sticker set '{pack_name}' found, but no stickers inside!")
-        except Exception as ex:
-            print(f"STICKER SET FETCH ERROR: {ex}")
-    except Exception as e:
-        print(f"STICKER GENERAL ERROR: {e}")
-    # ───────────────────────────────────────────────
+        if not sent_sticker:
+            # Fallback to a common default public sticker pack
+            try:
+                fallback_set = await app.get_sticker_set("Animals")
+                if fallback_set and fallback_set.stickers:
+                    random_sticker = random.choice(fallback_set.stickers)
+                    await m.reply_sticker(random_sticker.file_id)
+            except Exception as fe:
+                print(f"Fallback Sticker Error: {fe}")
+    except Exception as err:
+        print(f"Sticker Trigger Error: {err}")
+    # ──────────────────────────────
 
     sent = await m.reply_text(m.lang["play_searching"])
 
