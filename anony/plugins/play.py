@@ -1,3 +1,4 @@
+import os
 import random
 import sys
 from pathlib import Path
@@ -7,6 +8,17 @@ from pyrogram import filters, types
 from anony import anon, app, config, db, lang, queue, tg, yt
 from anony.helpers import buttons, utils
 from anony.helpers._play import checkUB
+
+
+# Safe file removal helper for RAM/Disk optimization
+def cleanup_file(file_path: str):
+    """ Deletes temporary audio/video files safely to save Render RAM & Disk space. """
+    if file_path and isinstance(file_path, str) and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            print(f"Failed to delete {file_path}: {e}")
+
 
 # Comprehensive patch for missing play_log in core modules
 async def _dummy_play_log(*args, **kwargs):
@@ -193,6 +205,9 @@ async def play_hndlr(
         played_media = await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     except Exception as play_err:
         print(f"Play Media Error: {play_err}")
+        # Clean up downloaded file if play fails
+        if getattr(file, "file_path", None):
+            cleanup_file(file.file_path)
         return await sent.edit_text(f"Playback failed: {play_err}")
 
     # Save Telegram file_id to Cache
@@ -202,6 +217,11 @@ async def play_hndlr(
             await db.set_audio_cache(file.id, file_id_to_save)
         except Exception:
             pass
+
+    # ── [ Auto Clean Local File to Save Render Memory/RAM ] ──
+    if getattr(file, "file_path", None):
+        cleanup_file(file.file_path)
+    # ─────────────────────────────────────────────────────────
 
     if not tracks:
         return
