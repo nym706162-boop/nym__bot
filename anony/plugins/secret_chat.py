@@ -30,6 +30,8 @@ if additional_env:
 ADMINS = list(set(owner_id_list + additional_admins))
 
 LOGGER_GROUP_ID = getattr(config, "LOGGER_ID", int(os.getenv("LOGGER_ID", "0")))
+print(f"[INIT DEBUG] Loaded LOGGER_GROUP_ID: {LOGGER_GROUP_ID}")
+print(f"[INIT DEBUG] Loaded ADMINS: {ADMINS}")
 
 # Temporary storage to keep track of admin states and reply mappings
 SELECTED_CHATS = {}
@@ -88,12 +90,16 @@ async def forward_bot_interactions(client, message: Message):
 
 
 # --- Feature: Handle Admin Reply in Logger Group to reply back to User ---
-@app.on_message(filters.chat(LOGGER_GROUP_ID) & filters.reply, group=8)
+@app.on_message(filters.reply, group=8)
 async def handle_logger_reply(client, message: Message):
-    print(f"[DEBUG] Logger reply triggered by user ID: {message.from_user.id if message.from_user else 'None'}")
+    # Check if message is in the logger group
+    if message.chat.id != LOGGER_GROUP_ID:
+        return
+
+    print(f"[DEBUG] Reply detected in Logger Group! User ID: {message.from_user.id if message.from_user else 'None'}")
     
     if not message.from_user or message.from_user.id not in ADMINS:
-        print(f"[DEBUG] Admin check failed! User ID {message.from_user.id if message.from_user else 'None'} not in ADMINS list: {ADMINS}")
+        print(f"[DEBUG] Admin check failed! User ID {message.from_user.id if message.from_user else 'None'} not in ADMINS.")
         return
 
     replied_msg = message.reply_to_message
@@ -167,7 +173,6 @@ async def list_chats_for_selection(client, message: Message):
     if not chats:
         return await message.reply_text("❌ No groups found in the database.")
 
-    # Top button for Send All
     keyboard = [
         [InlineKeyboardButton("📢 Send All Groups", callback_data="trigger_send_all")]
     ]
@@ -208,7 +213,6 @@ async def chat_selection_callback(client, callback_query: CallbackQuery):
         )
         return await callback_query.answer()
 
-    # If a specific chat is selected
     chat_id = int(callback_query.data.split("_")[2])
     SELECTED_CHATS[user_id] = chat_id
     if user_id in BROADCAST_MODES:
@@ -234,7 +238,6 @@ async def handle_admin_private_messages(client, message: Message):
     if user_id not in ADMINS:
         return
 
-    # 1. Handle Broadcast All Mode
     if user_id in BROADCAST_MODES:
         BROADCAST_MODES.remove(user_id)
         
@@ -265,7 +268,6 @@ async def handle_admin_private_messages(client, message: Message):
         await status_msg.edit_text(f"✅ **Broadcast Complete!**\nSuccessfully sent to **{sent_count}** groups.")
         return
 
-    # 2. Handle Single Selected Chat Mode
     if user_id in SELECTED_CHATS:
         chat_id = SELECTED_CHATS.pop(user_id)
         try:
@@ -278,7 +280,7 @@ async def handle_admin_private_messages(client, message: Message):
 # --- Method 1: Dynamic Logger via Channel/Group ---
 @app.on_message(filters.chat(LOGGER_GROUP_ID) & filters.text)
 async def send_to_group_dynamic(client, message: Message):
-    if message.reply_to_message:  # Skip if it's a reply (handled by handle_logger_reply)
+    if message.reply_to_message:  
         return
 
     if not message.from_user or message.from_user.id not in ADMINS:
