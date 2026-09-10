@@ -35,6 +35,21 @@ SELECTED_CHATS = {}
 BROADCAST_MODES = set()
 
 
+# --- Auto-track/Update chats when bot interacts in groups ---
+@app.on_message(filters.group & ~filters.service, group=6)
+async def auto_track_chats(client, message: Message):
+    if not message.chat:
+        return
+    chat_id = message.chat.id
+    try:
+        if hasattr(db, "add_served_chat"):
+            await db.add_served_chat(chat_id)
+        elif hasattr(db, "add_chat"):
+            await db.add_chat(chat_id)
+    except Exception:
+        pass
+
+
 # --- Feature: List all chats and Send All button in Bot Private Chat ---
 @app.on_message(filters.command(["chats", "chat"]) & filters.private)
 async def list_chats_for_selection(client, message: Message):
