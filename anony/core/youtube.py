@@ -55,7 +55,7 @@ class YouTube:
         if not self.cookies:
             if not self.warned:
                 self.warned = True
-                logger.warning("Cookies are missing; downloads might fail.")
+                logger.warning("Cookies are missing; downloads will be heavily throttled!")
             return None
         return random.choice(self.cookies)
 
@@ -190,16 +190,9 @@ class YouTube:
             "logger": DummyLogger(),
             "nocheckcertificate": True,
             "cookiefile": cookie,
-            "remote_components": ["ejs:github"],
-            "concurrent_fragment_downloads": 15,  # වැඩි කරන ලදී
-            "buffersize": 1024 * 64,
-            "http_chunk_size": 10485760,
-            "cachedir": False,
-            "prefer_insecure": True,
-            "retries": 3,
-            "fragment_retries": 3,
+            "concurrent_fragment_downloads": 10,  # කොටස් 10 කට බෙදා එකවර ඩවුන්ලෝඩ් කරයි
             "socket_timeout": 30,
-            # YouTube සර්වර් ස්පීඩ් ලිමිට් (Throttling) මඟහරවා ගැනීමට මෙය අත්‍යවශ්‍යයි:
+            "source_address": "0.0.0.0",  # Cloud සර්වර් වල රවුටින් ස්ලෝ වීම වැළැක්වීමට IPv4 Force කරයි
             "extractor_args": {
                 "youtube": {
                     "player_client": ["android", "web"]
@@ -216,14 +209,15 @@ class YouTube:
         else:
             ydl_opts = {
                 **base_opts,
-                "format": "bestaudio[ext=webm][acodec=opus]/bestaudio/best",
+                "format": "bestaudio/best",
             }
 
         def _download():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
                     ydl.download([url])
-                except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError):
+                except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError) as e:
+                    logger.warning("Download error: %s", e)
                     return None
                 except Exception as ex:
                     logger.warning("Download failed: %s", ex)
@@ -250,7 +244,7 @@ class YouTube:
             "logger": DummyLogger(),
             "nocheckcertificate": True,
             "cookiefile": cookie,
-            "cachedir": False,
+            "source_address": "0.0.0.0",
             "extractor_args": {
                 "youtube": {
                     "player_client": ["android", "web"]
