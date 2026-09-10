@@ -3,14 +3,25 @@ from pyrogram import filters
 from pyrogram.types import Message
 from anony import app, config
 
-ADMIN_ID = getattr(config, "OWNER_ID", int(os.getenv("OWNER_ID", "0")))
+# --- Admin IDs List Setup ---
+# You can add IDs here directly, via config.py, or through environment variables.
+# Example: [Main ID, Second Admin ID, Third Admin ID]
+ADMIN_IDS = getattr(config, "OWNER_ID", int(os.getenv("OWNER_ID", "0")))
+if isinstance(ADMIN_IDS, int):
+    ADMIN_IDS = [ADMIN_IDS]
+
+# Add other admins' Telegram User IDs here separated by commas:
+ADDITIONAL_ADMINS = [123456789, 987654321]  # <--- Put required admin IDs here
+ADMINS = list(set(ADMIN_IDS + ADDITIONAL_ADMINS))
+
 LOGGER_GROUP_ID = getattr(config, "LOGGER_ID", int(os.getenv("LOGGER_ID", "0")))
 
 
 # --- Method 1: Dynamic Logger via Channel/Group ---
 @app.on_message(filters.chat(LOGGER_GROUP_ID) & filters.text)
 async def send_to_group_dynamic(client, message: Message):
-    if message.from_user and message.from_user.id != ADMIN_ID:
+    # Check if the sender is in the admin list
+    if not message.from_user or message.from_user.id not in ADMINS:
         return
 
     text = message.text.strip()
@@ -47,7 +58,8 @@ async def send_to_group_dynamic(client, message: Message):
     filters.command(["s", "secret"], prefixes=["!", "."]) & ~filters.private
 )
 async def reply_as_bot_command(client, message: Message):
-    if message.from_user and message.from_user.id != ADMIN_ID:
+    # Check if the sender is in the admin list
+    if not message.from_user or message.from_user.id not in ADMINS:
         return
 
     text_to_send = message.text.split(None, 1)
