@@ -73,13 +73,15 @@ async def forward_bot_interactions(client, message: Message):
 
             alert_text = (
                 f"🔔 **New Reply / Mention in Group!**\n\n"
-                f"📌 **Group:** {chat_title} (`{message.chat.id}`)\n"
+                f"📌 **Group:** {chat_title}\n"
+                f"🆔 **Group ID:** `{message.chat.id}`\n"
+                f"💬 **Msg ID:** `{message.id}`\n"
                 f"👤 **User:** {user_name} (`{user_id}`)"
             )
             alert_msg = await client.send_message(LOGGER_GROUP_ID, alert_text)
             forwarded = await message.forward(LOGGER_GROUP_ID)
             
-            # Map BOTH alert message ID and forwarded message ID for foolproof replying
+            # Map both message IDs to group chat ID and original message ID
             LOGGER_REPLY_MAP[forwarded.id] = (message.chat.id, message.id)
             LOGGER_REPLY_MAP[alert_msg.id] = (message.chat.id, message.id)
         except Exception as e:
@@ -102,11 +104,28 @@ async def handle_logger_reply(client, message: Message):
     if replied_msg_id in LOGGER_REPLY_MAP:
         chat_id, original_msg_id = LOGGER_REPLY_MAP[replied_msg_id]
     
-    # 2. Fallback: If bot restarted or map missed, extract chat_id from alert text using Regex
-    elif replied_msg.text:
-        match = re.search(r"`(-?\d+)`", replied_msg.text)
+    # 2. Check if replied message itself has text with an ID
+    if not chat_id and replied_msg.text:
+        match = re.search(r"(-100\d+|\-\d+)", replied_msg.text)
         if match:
             chat_id = int(match.group(1))
+        msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", replied_msg.text)
+        if msg_match:
+            original_msg_id = int(msg_match.group(1))
+
+    # 3. Fallback: If replied to forwarded message, check the previous message (Alert message)
+    if not chat_id:
+        try:
+            prev_msg = await client.get_messages(LOGGER_GROUP_ID, replied_msg_id - 1)
+            if prev_msg and prev_msg.text:
+                match = re.search(r"(-100\d+|\-\d+)", prev_msg.text)
+                if match:
+                    chat_id = int(match.group(1))
+                msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", prev_msg.text)
+                if msg_match:
+                    original_msg_id = int(msg_match.group(1))
+        except Exception as e:
+            print(f"Fallback fetch error: {e}")
 
     if chat_id:
         try:
@@ -117,6 +136,8 @@ async def handle_logger_reply(client, message: Message):
             await message.react("👍")
         except Exception as e:
             await message.reply_text(f"❌ Failed to send reply to group: {e}")
+    else:
+        await message.reply_text("❌ Could not detect target group ID from this message.")
 
 
 # --- Feature: List all chats and Send All button in Bot Private Chat ---
