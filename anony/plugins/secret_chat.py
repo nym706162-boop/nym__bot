@@ -129,9 +129,11 @@ async def handle_logger_reply(client, message: Message):
     if chat_id:
         try:
             if original_msg_id:
-                await message.copy(chat_id=chat_id, reply_to_message_id=original_msg_id)
+                sent_msg = await message.copy(chat_id=chat_id, reply_to_message_id=original_msg_id)
             else:
-                await message.copy(chat_id=chat_id)
+                sent_msg = await message.copy(chat_id=chat_id)
+            
+            LOGGER_REPLY_MAP[message.id] = (chat_id, sent_msg.id)
             await message.react("👍")
         except Exception as e:
             await message.reply_text(f"❌ Failed to send reply to group: {e}")
@@ -292,9 +294,7 @@ async def send_to_group_dynamic(client, message: Message):
             target = target_raw if target_raw.startswith("@") else f"@{target_raw}"
 
         sent_msg = await client.send_message(chat_id=target, text=text_to_send)
-        
         LOGGER_REPLY_MAP[message.id] = (sent_msg.chat.id, sent_msg.id)
-        
         await message.react("👍")
 
     except Exception as e:
@@ -337,7 +337,7 @@ async def edit_outbound_message(client, message: Message):
         return
     
     if not message.reply_to_message:
-        return await message.reply_text("❌ Please reply to your original send command message in this group to edit!")
+        return await message.reply_text("❌ Please reply to your sent reply message to edit!")
     
     orig_msg_id = message.reply_to_message.id
     if orig_msg_id not in LOGGER_REPLY_MAP:
@@ -370,7 +370,7 @@ async def delete_outbound_message(client, message: Message):
         return
     
     if not message.reply_to_message:
-        return await message.reply_text("❌ Please reply to your original send command message in this group to delete!")
+        return await message.reply_text("❌ Please reply to your sent reply message or forwarded message to delete!")
     
     orig_msg_id = message.reply_to_message.id
     if orig_msg_id not in LOGGER_REPLY_MAP:
