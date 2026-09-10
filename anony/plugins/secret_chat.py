@@ -1,3 +1,8 @@
+# Copyright (c) 2026 by nym
+# Licensed under the MIT License.
+# This file is part of nym
+
+
 import os
 import asyncio
 from pyrogram import filters
