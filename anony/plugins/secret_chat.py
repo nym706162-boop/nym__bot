@@ -5,6 +5,7 @@
 
 import os
 import asyncio
+import re
 from pyrogram import filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from anony import app, config, db
@@ -75,11 +76,12 @@ async def forward_bot_interactions(client, message: Message):
                 f"📌 **Group:** {chat_title} (`{message.chat.id}`)\n"
                 f"👤 **User:** {user_name} (`{user_id}`)"
             )
-            await client.send_message(LOGGER_GROUP_ID, alert_text)
+            alert_msg = await client.send_message(LOGGER_GROUP_ID, alert_text)
             forwarded = await message.forward(LOGGER_GROUP_ID)
             
-            # Map forwarded message ID to group chat ID and original message ID
+            # Map BOTH alert message ID and forwarded message ID for foolproof replying
             LOGGER_REPLY_MAP[forwarded.id] = (message.chat.id, message.id)
+            LOGGER_REPLY_MAP[alert_msg.id] = (message.chat.id, message.id)
         except Exception as e:
             print(f"Interaction Forward Error: {e}")
 
@@ -90,12 +92,28 @@ async def handle_logger_reply(client, message: Message):
     if not message.from_user or message.from_user.id not in ADMINS:
         return
 
-    replied_msg_id = message.reply_to_message.id
+    replied_msg = message.reply_to_message
+    replied_msg_id = replied_msg.id
+    
+    chat_id = None
+    original_msg_id = None
+
+    # 1. Check from memory map first
     if replied_msg_id in LOGGER_REPLY_MAP:
         chat_id, original_msg_id = LOGGER_REPLY_MAP[replied_msg_id]
+    
+    # 2. Fallback: If bot restarted or map missed, extract chat_id from alert text using Regex
+    elif replied_msg.text:
+        match = re.search(r"`(-?\d+)`", replied_msg.text)
+        if match:
+            chat_id = int(match.group(1))
+
+    if chat_id:
         try:
-            # Copy admin's reply (text, sticker, photo, etc.) and reply directly to the user in the group
-            await message.copy(chat_id=chat_id, reply_to_message_id=original_msg_id)
+            if original_msg_id:
+                await message.copy(chat_id=chat_id, reply_to_message_id=original_msg_id)
+            else:
+                await message.copy(chat_id=chat_id)
             await message.react("👍")
         except Exception as e:
             await message.reply_text(f"❌ Failed to send reply to group: {e}")
