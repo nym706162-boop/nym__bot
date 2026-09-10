@@ -33,6 +33,18 @@ BROADCAST_MODES = set()
 LOGGER_REPLY_MAP = {}
 
 
+# --- Helper Function to Get Map Data safely ---
+def get_map_data(msg_id):
+    val = LOGGER_REPLY_MAP.get(msg_id)
+    if not val:
+        return None
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, tuple):
+        return {"chat_id": val[0], "user_msg_id": val[1], "bot_msg_id": val[1]}
+    return None
+
+
 # --- Auto-track/Update chats when bot interacts in groups ---
 @app.on_message(filters.group & ~filters.service, group=6)
 async def auto_track_chats(client, message: Message):
@@ -78,8 +90,13 @@ async def forward_bot_interactions(client, message: Message):
             alert_msg = await client.send_message(MSG_GRP_ID, alert_text)
             forwarded = await message.forward(MSG_GRP_ID)
             
-            LOGGER_REPLY_MAP[forwarded.id] = (message.chat.id, message.id)
-            LOGGER_REPLY_MAP[alert_msg.id] = (message.chat.id, message.id)
+            map_data = {
+                "chat_id": message.chat.id,
+                "user_msg_id": message.id,
+                "bot_msg_id": None
+            }
+            LOGGER_REPLY_MAP[forwarded.id] = map_data
+            LOGGER_REPLY_MAP[alert_msg.id] = map_data
         except Exception as e:
             print(f"Interaction Forward Error: {e}")
 
@@ -100,10 +117,12 @@ async def handle_logger_reply(client, message: Message):
     replied_msg_id = replied_msg.id
     
     chat_id = None
-    original_msg_id = None
+    user_msg_id = None
 
-    if replied_msg_id in LOGGER_REPLY_MAP:
-        chat_id, original_msg_id = LOGGER_REPLY_MAP[replied_msg_id]
+    map_data = get_map_data(replied_msg_id)
+    if map_data:
+        chat_id = map_data.get("chat_id")
+        user_msg_id = map_data.get("user_msg_id")
     
     if not chat_id and replied_msg.text:
         match = re.search(r"(-100\d+|\-\d+)", replied_msg.text)
@@ -111,7 +130,7 @@ async def handle_logger_reply(client, message: Message):
             chat_id = int(match.group(1))
         msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", replied_msg.text)
         if msg_match:
-            original_msg_id = int(msg_match.group(1))
+            user_msg_id = int(msg_match.group(1))
 
     if not chat_id:
         try:
@@ -122,18 +141,22 @@ async def handle_logger_reply(client, message: Message):
                     chat_id = int(match.group(1))
                 msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", prev_msg.text)
                 if msg_match:
-                    original_msg_id = int(msg_match.group(1))
+                    user_msg_id = int(msg_match.group(1))
         except Exception as e:
             print(f"Fallback fetch error: {e}")
 
     if chat_id:
         try:
-            if original_msg_id:
-                sent_msg = await message.copy(chat_id=chat_id, reply_to_message_id=original_msg_id)
+            if user_msg_id:
+                sent_msg = await message.copy(chat_id=chat_id, reply_to_message_id=user_msg_id)
             else:
                 sent_msg = await message.copy(chat_id=chat_id)
             
-            LOGGER_REPLY_MAP[message.id] = (chat_id, sent_msg.id)
+            LOGGER_REPLY_MAP[message.id] = {
+                "chat_id": chat_id,
+                "user_msg_id": user_msg_id,
+                "bot_msg_id": sent_msg.id
+            }
             await message.react("👍")
         except Exception as e:
             await message.reply_text(f"❌ Failed to send reply to group: {e}")
@@ -294,7 +317,11 @@ async def send_to_group_dynamic(client, message: Message):
             target = target_raw if target_raw.startswith("@") else f"@{target_raw}"
 
         sent_msg = await client.send_message(chat_id=target, text=text_to_send)
-        LOGGER_REPLY_MAP[message.id] = (sent_msg.chat.id, sent_msg.id)
+        LOGGER_REPLY_MAP[message.id] = {
+            "chat_id": sent_msg.chat.id,
+            "user_msg_id": None,
+            "bot_msg_id": sent_msg.id
+        }
         await message.react("👍")
 
     except Exception as e:
@@ -337,13 +364,16 @@ async def edit_outbound_message(client, message: Message):
         return
     
     if not message.reply_to_message:
-        return await message.reply_text("❌ Please reply to your sent reply message to edit!")
+        return await message.reply_text("❌ Please reply to the message you want to edit!")
     
     orig_msg_id = message.reply_to_message.id
-    if orig_msg_id not in LOGGER_REPLY_MAP:
-        return await message.reply_text("❌ Could not find target message mapping.")
+    map_data = get_map_data(orig_msg_id)
     
-    target_chat_id, target_msg_id = LOGGER_REPLY_MAP[orig_msg_id]
+    if not map_data or not map_data.get("bot_msg_id"):
+        return await message.reply_text("❌ Could not find target bot message to edit.")
+    
+    target_chat_id = map_data["chat_id"]
+    target_msg_id = map_data["bot_msg_id"]
     
     args = message.text.split(None, 1)
     if len(args) < 2:
@@ -370,13 +400,19 @@ async def delete_outbound_message(client, message: Message):
         return
     
     if not message.reply_to_message:
-        return await message.reply_text("❌ Please reply to your sent reply message or forwarded message to delete!")
+        return await message.reply_text("❌ Please reply to the message you want to delete!")
     
     orig_msg_id = message.reply_to_message.id
-    if orig_msg_id not in LOGGER_REPLY_MAP:
+    map_data = get_map_data(orig_msg_id)
+    
+    if not map_data:
         return await message.reply_text("❌ Could not find target message mapping.")
     
-    target_chat_id, target_msg_id = LOGGER_REPLY_MAP[orig_msg_id]
+    target_chat_id = map_data.get("chat_id")
+    target_msg_id = map_data.get("bot_msg_id") or map_data.get("user_msg_id")
+    
+    if not target_chat_id or not target_msg_id:
+        return await message.reply_text("❌ Target message ID not found.")
     
     try:
         await client.delete_messages(
@@ -384,6 +420,7 @@ async def delete_outbound_message(client, message: Message):
             message_ids=target_msg_id
         )
         await message.react("👍")
-        del LOGGER_REPLY_MAP[orig_msg_id]
+        if orig_msg_id in LOGGER_REPLY_MAP:
+            del LOGGER_REPLY_MAP[orig_msg_id]
     except Exception as e:
         await message.reply_text(f"❌ Failed to delete in target group: {e}")
