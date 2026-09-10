@@ -92,11 +92,13 @@ async def forward_bot_interactions(client, message: Message):
 # --- Feature: Handle Admin Reply in Logger Group to reply back to User ---
 @app.on_message(filters.reply, group=8)
 async def handle_logger_reply(client, message: Message):
-    # Check if message is in the logger group
+    # Print immediately to see what chat ID this message is coming from
+    print(f"[DEBUG] Reply detected! Message Chat ID: {message.chat.id} | Configured LOGGER_GROUP_ID: {LOGGER_GROUP_ID}")
+
     if message.chat.id != LOGGER_GROUP_ID:
         return
 
-    print(f"[DEBUG] Reply detected in Logger Group! User ID: {message.from_user.id if message.from_user else 'None'}")
+    print(f"[DEBUG] Passed Logger Group check! User ID: {message.from_user.id if message.from_user else 'None'}")
     
     if not message.from_user or message.from_user.id not in ADMINS:
         print(f"[DEBUG] Admin check failed! User ID {message.from_user.id if message.from_user else 'None'} not in ADMINS.")
