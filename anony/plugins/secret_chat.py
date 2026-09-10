@@ -93,6 +93,9 @@ async def handle_logger_reply(client, message: Message):
     if not message.from_user or message.from_user.id not in ADMINS:
         return
 
+    if message.text and message.text.startswith(("/", "!", ".")):
+        return
+
     replied_msg = message.reply_to_message
     replied_msg_id = replied_msg.id
     
@@ -290,7 +293,6 @@ async def send_to_group_dynamic(client, message: Message):
 
         sent_msg = await client.send_message(chat_id=target, text=text_to_send)
         
-        # LOGGER_REPLY_MAP එක හරහා මැසේජ් එක ලියා තබා ගැනීම (Edit/Del සඳහා)
         LOGGER_REPLY_MAP[message.id] = (sent_msg.chat.id, sent_msg.id)
         
         await message.react("👍")
