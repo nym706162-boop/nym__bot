@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 # This file is part of nym
 
-
 import os
 import re
 import yt_dlp
@@ -192,13 +191,20 @@ class YouTube:
             "nocheckcertificate": True,
             "cookiefile": cookie,
             "remote_components": ["ejs:github"],
-            "concurrent_fragment_downloads": 10,
+            "concurrent_fragment_downloads": 15,  # වැඩි කරන ලදී
             "buffersize": 1024 * 64,
             "http_chunk_size": 10485760,
             "cachedir": False,
             "prefer_insecure": True,
             "retries": 3,
             "fragment_retries": 3,
+            "socket_timeout": 30,
+            # YouTube සර්වර් ස්පීඩ් ලිමිට් (Throttling) මඟහරවා ගැනීමට මෙය අත්‍යවශ්‍යයි:
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"]
+                }
+            },
         }
 
         if video:
@@ -245,6 +251,11 @@ class YouTube:
             "nocheckcertificate": True,
             "cookiefile": cookie,
             "cachedir": False,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web"]
+                }
+            },
         }
 
         def _extract():
