@@ -102,14 +102,12 @@ async def forward_bot_interactions(client, message: Message):
 
 
 # --- Feature: Handle Admin Reply in MSG_GRP_ID ---
-@app.on_message(filters.reply, group=8)
+@app.on_message(filters.chat(MSG_GRP_ID) & filters.reply, group=8)
 async def handle_logger_reply(client, message: Message):
-    if message.chat.id != MSG_GRP_ID:
-        return
-
     if not message.from_user or message.from_user.id not in ADMINS:
         return
 
+    # Ignore Commands
     if message.text and message.text.startswith(("/", "!", ".")):
         return
 
@@ -124,6 +122,7 @@ async def handle_logger_reply(client, message: Message):
         chat_id = map_data.get("chat_id")
         user_msg_id = map_data.get("user_msg_id")
     
+    # Fallback via regex if map missed
     if not chat_id and replied_msg.text:
         match = re.search(r"(-100\d+|\-\d+)", replied_msg.text)
         if match:
@@ -152,6 +151,7 @@ async def handle_logger_reply(client, message: Message):
             else:
                 sent_msg = await message.copy(chat_id=chat_id)
             
+            # Map this admin reply message so admin can reply, edit or delete it
             LOGGER_REPLY_MAP[message.id] = {
                 "chat_id": chat_id,
                 "user_msg_id": user_msg_id,
@@ -286,7 +286,7 @@ async def handle_admin_private_messages(client, message: Message):
             await message.reply_text(f"❌ Failed to send: {e}")
 
 
-# --- Method 1: Dynamic Sender via MSG_GRP_ID (With Auto-Tracking for Edit/Del) ---
+# --- Method 1: Dynamic Sender via MSG_GRP_ID ---
 @app.on_message(filters.chat(MSG_GRP_ID) & filters.text)
 async def send_to_group_dynamic(client, message: Message):
     if message.reply_to_message:  
@@ -355,7 +355,7 @@ async def reply_as_bot_command(client, message: Message):
         print(f"Command Trigger Error: {e}")
 
 
-# --- Feature: Edit Messages directly from MSG_GRP_ID ---
+# --- Feature: Edit Outbound Messages directly from MSG_GRP_ID ---
 @app.on_message(
     filters.chat(MSG_GRP_ID) & filters.command(["edit", "ed"], prefixes=["/", "!", "."])
 )
@@ -364,13 +364,13 @@ async def edit_outbound_message(client, message: Message):
         return
     
     if not message.reply_to_message:
-        return await message.reply_text("❌ Please reply to the message you want to edit!")
+        return await message.reply_text("❌ Please reply to your sent reply message in MSG_GRP_ID to edit it!")
     
     orig_msg_id = message.reply_to_message.id
     map_data = get_map_data(orig_msg_id)
     
     if not map_data or not map_data.get("bot_msg_id"):
-        return await message.reply_text("❌ Could not find target bot message to edit.")
+        return await message.reply_text("❌ Could not find target bot message to edit. Reply directly to your sent reply message.")
     
     target_chat_id = map_data["chat_id"]
     target_msg_id = map_data["bot_msg_id"]
@@ -391,7 +391,7 @@ async def edit_outbound_message(client, message: Message):
         await message.reply_text(f"❌ Failed to edit in target group: {e}")
 
 
-# --- Feature: Delete Messages directly from MSG_GRP_ID ---
+# --- Feature: Delete Outbound/User Messages directly from MSG_GRP_ID ---
 @app.on_message(
     filters.chat(MSG_GRP_ID) & filters.command(["del", "delete", "remove"], prefixes=["/", "!", "."])
 )
@@ -400,7 +400,7 @@ async def delete_outbound_message(client, message: Message):
         return
     
     if not message.reply_to_message:
-        return await message.reply_text("❌ Please reply to the message you want to delete!")
+        return await message.reply_text("❌ Please reply to a message in MSG_GRP_ID to delete!")
     
     orig_msg_id = message.reply_to_message.id
     map_data = get_map_data(orig_msg_id)
@@ -420,7 +420,5 @@ async def delete_outbound_message(client, message: Message):
             message_ids=target_msg_id
         )
         await message.react("👍")
-        if orig_msg_id in LOGGER_REPLY_MAP:
-            del LOGGER_REPLY_MAP[orig_msg_id]
     except Exception as e:
         await message.reply_text(f"❌ Failed to delete in target group: {e}")
