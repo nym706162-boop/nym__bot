@@ -146,7 +146,7 @@ async def handle_logger_reply(client, message: Message):
             else:
                 sent_msg = await message.copy(chat_id=chat_id)
             
-            # Map this admin message so its bot_msg_id is recorded for edit/delete
+            # Record map data for nested replies/edits/deletes
             LOGGER_REPLY_MAP[message.id] = {
                 "chat_id": chat_id,
                 "user_msg_id": user_msg_id,
@@ -159,7 +159,7 @@ async def handle_logger_reply(client, message: Message):
         await message.reply_text("❌ Could not detect target group/message ID.")
 
 
-# --- Feature: Edit ONLY Bot Messages directly from MSG_GRP_ID ---
+# --- Feature: Edit Bot Messages directly from MSG_GRP_ID ---
 @app.on_message(
     filters.chat(MSG_GRP_ID) & filters.command(["edit", "ed"], prefixes=["/", "!", "."])
 )
@@ -168,16 +168,16 @@ async def edit_outbound_message(client, message: Message):
         return
     
     if not message.reply_to_message:
-        return await message.reply_text("❌ Bot හරහා යැවූ මැසේජ් එකට Reply කර /edit භාවිත කරන්න!")
+        return await message.reply_text("❌ Please reply to the message you want to edit!")
     
     map_data = await find_mapping_recursive(client, message.reply_to_message)
     
     if not map_data or not map_data.get("bot_msg_id"):
-        return await message.reply_text("❌ Edit කිරීමට අදාළ Bot මැසේජ් එකක් සොයාගත නොහැකි විය. (Bot හරහා යැවූ මැසේජ් එකකට Reply කරන්න)")
+        return await message.reply_text("❌ You can only edit messages sent by the bot.")
     
     args = message.text.split(None, 1)
     if len(args) < 2:
-        return await message.reply_text("❌ අලුත් Text එක ලබා දෙන්න. Example: `/edit New text`")
+        return await message.reply_text("❌ Please provide the new text. Example: `/edit New text`")
     
     new_text = args[1].strip()
     try:
@@ -188,10 +188,10 @@ async def edit_outbound_message(client, message: Message):
         )
         await message.react("👍")
     except Exception as e:
-        await message.reply_text(f"❌ Bot මැසේජ් එක Edit කිරීමට නොහැකි විය: {e}")
+        await message.reply_text(f"❌ Failed to edit: {e}")
 
 
-# --- Feature: Delete ONLY Bot Messages directly from MSG_GRP_ID ---
+# --- Feature: Delete Messages (Bot Msg or User Msg) directly from MSG_GRP_ID ---
 @app.on_message(
     filters.chat(MSG_GRP_ID) & filters.command(["del", "delete", "remove"], prefixes=["/", "!", "."])
 )
@@ -200,24 +200,27 @@ async def delete_outbound_message(client, message: Message):
         return
     
     if not message.reply_to_message:
-        return await message.reply_text("❌ Bot හරහා යැවූ මැසේජ් එකට Reply කර /del භාවිත කරන්න!")
+        return await message.reply_text("❌ Please reply to the message you want to delete!")
     
     map_data = await find_mapping_recursive(client, message.reply_to_message)
     
-    if not map_data or not map_data.get("bot_msg_id"):
-        return await message.reply_text("❌ Delete කිරීමට අදාළ Bot මැසේජ් එකක් සොයාගත නොහැකි විය. (Bot හරහා යැවූ මැසේජ් එකකට Reply කරන්න)")
+    if not map_data or not map_data.get("chat_id"):
+        return await message.reply_text("❌ Could not find the target group for deletion.")
     
-    target_chat_id = map_data["chat_id"]
-    target_bot_msg_id = map_data["bot_msg_id"]
+    # Priority: bot_msg_id first (if replying to admin response), fallback to user_msg_id (if replying to user's forwarded msg)
+    target_msg_id = map_data.get("bot_msg_id") or map_data.get("user_msg_id")
+    
+    if not target_msg_id:
+        return await message.reply_text("❌ Could not find the target message ID for deletion.")
     
     try:
         await client.delete_messages(
-            chat_id=target_chat_id,
-            message_ids=target_bot_msg_id
+            chat_id=map_data["chat_id"],
+            message_ids=target_msg_id
         )
         await message.react("👍")
     except Exception as e:
-        await message.reply_text(f"❌ Bot මැසේජ් එක Delete කිරීමට නොහැකි විය: {e}")
+        await message.reply_text(f"❌ Failed to delete: {e}")
 
 
 # --- Feature: List all chats and Send All button in Bot Private Chat ---
@@ -236,7 +239,7 @@ async def list_chats_for_selection(client, message: Message):
         print(f"DB Fetch Error: {e}")
 
     if not chats:
-        return await message.reply_text("❌ No groups found in database.")
+        return await message.reply_text("❌ No groups found in the database.")
 
     keyboard = [[InlineKeyboardButton("📢 Send All Groups", callback_data="trigger_send_all")]]
 
@@ -248,7 +251,7 @@ async def list_chats_for_selection(client, message: Message):
         except Exception:
             continue
 
-    await message.reply_text("📋 **Select group or send to all:**", reply_markup=InlineKeyboardMarkup(keyboard))
+    await message.reply_text("📋 **Select a group or broadcast:**", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 # --- Handle Private Callbacks & Broadcast ---
@@ -262,7 +265,7 @@ async def chat_selection_callback(client, callback_query: CallbackQuery):
     if callback_query.data == "trigger_send_all":
         BROADCAST_MODES.add(user_id)
         SELECTED_CHATS.pop(user_id, None)
-        await callback_query.message.edit_text("📢 **Broadcast Mode Active!** Send any message now.")
+        await callback_query.message.edit_text("📢 **Broadcast Mode Active!** Send your message now.")
         return await callback_query.answer()
 
     chat_id = int(callback_query.data.split("_")[2])
@@ -304,6 +307,6 @@ async def handle_admin_private_messages(client, message: Message):
         chat_id = SELECTED_CHATS.pop(user_id)
         try:
             await message.copy(chat_id)
-            await message.reply_text("✅ Sent successfully!")
+            await message.reply_text("✅ Sent successfully to the group!")
         except Exception as e:
             await message.reply_text(f"❌ Failed: {e}")
