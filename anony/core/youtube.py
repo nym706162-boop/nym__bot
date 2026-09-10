@@ -55,7 +55,7 @@ class YouTube:
         if not self.cookies:
             if not self.warned:
                 self.warned = True
-                logger.warning("Cookies are missing; downloads will be heavily throttled!")
+                logger.warning("Cookies are missing; downloads may fail due to YouTube restrictions.")
             return None
         return random.choice(self.cookies)
 
@@ -190,14 +190,10 @@ class YouTube:
             "logger": DummyLogger(),
             "nocheckcertificate": True,
             "cookiefile": cookie,
-            "concurrent_fragment_downloads": 10,  # කොටස් 10 කට බෙදා එකවර ඩවුන්ලෝඩ් කරයි
-            "socket_timeout": 30,
-            "source_address": "0.0.0.0",  # Cloud සර්වර් වල රවුටින් ස්ලෝ වීම වැළැක්වීමට IPv4 Force කරයි
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["android", "web"]
-                }
-            },
+            "concurrent_fragment_downloads": 3,  # ආරක්ෂිත සහ ස්ථාවර අගයක්
+            "socket_timeout": 60,
+            "retries": 10,
+            "fragment_retries": 10,
         }
 
         if video:
@@ -216,11 +212,8 @@ class YouTube:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:
                     ydl.download([url])
-                except (yt_dlp.utils.DownloadError, yt_dlp.utils.ExtractorError) as e:
-                    logger.warning("Download error: %s", e)
-                    return None
                 except Exception as ex:
-                    logger.warning("Download failed: %s", ex)
+                    logger.error("Download failed for %s: %s", video_id, ex)
                     return None
             return filename
 
@@ -244,12 +237,6 @@ class YouTube:
             "logger": DummyLogger(),
             "nocheckcertificate": True,
             "cookiefile": cookie,
-            "source_address": "0.0.0.0",
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["android", "web"]
-                }
-            },
         }
 
         def _extract():
