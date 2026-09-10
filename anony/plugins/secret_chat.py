@@ -33,15 +33,39 @@ BROADCAST_MODES = set()
 LOGGER_REPLY_MAP = {}
 
 
-# --- Helper Function to Get Map Data safely ---
-def get_map_data(msg_id):
-    val = LOGGER_REPLY_MAP.get(msg_id)
-    if not val:
-        return None
-    if isinstance(val, dict):
-        return val
-    if isinstance(val, tuple):
-        return {"chat_id": val[0], "user_msg_id": val[1], "bot_msg_id": val[1]}
+# --- Smart Recursive Mapping Finder ---
+async def find_mapping_recursive(client, msg: Message):
+    current = msg
+    for _ in range(12):  # Trace back up to 12 replies deep
+        if not current:
+            break
+        
+        # 1. Check in RAM dictionary
+        if current.id in LOGGER_REPLY_MAP:
+            return LOGGER_REPLY_MAP[current.id]
+        
+        # 2. Extract from Alert Header text if available
+        if current.text:
+            chat_match = re.search(r"(-100\d+|\-\d+)", current.text)
+            msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", current.text)
+            if chat_match and msg_match:
+                return {
+                    "chat_id": int(chat_match.group(1)),
+                    "user_msg_id": int(msg_match.group(1)),
+                    "bot_msg_id": None
+                }
+        
+        # 3. Move up the Telegram reply chain
+        if current.reply_to_message:
+            current = current.reply_to_message
+        elif current.reply_to_message_id:
+            try:
+                current = await client.get_messages(current.chat.id, current.reply_to_message_id)
+            except Exception:
+                break
+        else:
+            break
+
     return None
 
 
@@ -107,51 +131,22 @@ async def handle_logger_reply(client, message: Message):
     if not message.from_user or message.from_user.id not in ADMINS:
         return
 
-    # Ignore Commands
     if message.text and message.text.startswith(("/", "!", ".")):
         return
 
-    replied_msg = message.reply_to_message
-    replied_msg_id = replied_msg.id
+    map_data = await find_mapping_recursive(client, message.reply_to_message)
     
-    chat_id = None
-    user_msg_id = None
-
-    map_data = get_map_data(replied_msg_id)
-    if map_data:
-        chat_id = map_data.get("chat_id")
+    if map_data and map_data.get("chat_id"):
+        chat_id = map_data["chat_id"]
         user_msg_id = map_data.get("user_msg_id")
-    
-    # Fallback via regex if map missed
-    if not chat_id and replied_msg.text:
-        match = re.search(r"(-100\d+|\-\d+)", replied_msg.text)
-        if match:
-            chat_id = int(match.group(1))
-        msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", replied_msg.text)
-        if msg_match:
-            user_msg_id = int(msg_match.group(1))
-
-    if not chat_id:
-        try:
-            prev_msg = await client.get_messages(MSG_GRP_ID, replied_msg_id - 1)
-            if prev_msg and prev_msg.text:
-                match = re.search(r"(-100\d+|\-\d+)", prev_msg.text)
-                if match:
-                    chat_id = int(match.group(1))
-                msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", prev_msg.text)
-                if msg_match:
-                    user_msg_id = int(msg_match.group(1))
-        except Exception as e:
-            print(f"Fallback fetch error: {e}")
-
-    if chat_id:
+        
         try:
             if user_msg_id:
                 sent_msg = await message.copy(chat_id=chat_id, reply_to_message_id=user_msg_id)
             else:
                 sent_msg = await message.copy(chat_id=chat_id)
             
-            # Map this admin reply message so admin can reply, edit or delete it
+            # Map this admin message so its bot_msg_id is recorded for edit/delete
             LOGGER_REPLY_MAP[message.id] = {
                 "chat_id": chat_id,
                 "user_msg_id": user_msg_id,
@@ -161,7 +156,68 @@ async def handle_logger_reply(client, message: Message):
         except Exception as e:
             await message.reply_text(f"❌ Failed to send reply to group: {e}")
     else:
-        await message.reply_text("❌ Could not detect target group ID from this message.")
+        await message.reply_text("❌ Could not detect target group/message ID.")
+
+
+# --- Feature: Edit ONLY Bot Messages directly from MSG_GRP_ID ---
+@app.on_message(
+    filters.chat(MSG_GRP_ID) & filters.command(["edit", "ed"], prefixes=["/", "!", "."])
+)
+async def edit_outbound_message(client, message: Message):
+    if not message.from_user or message.from_user.id not in ADMINS:
+        return
+    
+    if not message.reply_to_message:
+        return await message.reply_text("❌ Bot හරහා යැවූ මැසේජ් එකට Reply කර /edit භාවිත කරන්න!")
+    
+    map_data = await find_mapping_recursive(client, message.reply_to_message)
+    
+    if not map_data or not map_data.get("bot_msg_id"):
+        return await message.reply_text("❌ Edit කිරීමට අදාළ Bot මැසේජ් එකක් සොයාගත නොහැකි විය. (Bot හරහා යැවූ මැසේජ් එකකට Reply කරන්න)")
+    
+    args = message.text.split(None, 1)
+    if len(args) < 2:
+        return await message.reply_text("❌ අලුත් Text එක ලබා දෙන්න. Example: `/edit New text`")
+    
+    new_text = args[1].strip()
+    try:
+        await client.edit_message_text(
+            chat_id=map_data["chat_id"],
+            message_id=map_data["bot_msg_id"],
+            text=new_text
+        )
+        await message.react("👍")
+    except Exception as e:
+        await message.reply_text(f"❌ Bot මැසේජ් එක Edit කිරීමට නොහැකි විය: {e}")
+
+
+# --- Feature: Delete ONLY Bot Messages directly from MSG_GRP_ID ---
+@app.on_message(
+    filters.chat(MSG_GRP_ID) & filters.command(["del", "delete", "remove"], prefixes=["/", "!", "."])
+)
+async def delete_outbound_message(client, message: Message):
+    if not message.from_user or message.from_user.id not in ADMINS:
+        return
+    
+    if not message.reply_to_message:
+        return await message.reply_text("❌ Bot හරහා යැවූ මැසේජ් එකට Reply කර /del භාවිත කරන්න!")
+    
+    map_data = await find_mapping_recursive(client, message.reply_to_message)
+    
+    if not map_data or not map_data.get("bot_msg_id"):
+        return await message.reply_text("❌ Delete කිරීමට අදාළ Bot මැසේජ් එකක් සොයාගත නොහැකි විය. (Bot හරහා යැවූ මැසේජ් එකකට Reply කරන්න)")
+    
+    target_chat_id = map_data["chat_id"]
+    target_bot_msg_id = map_data["bot_msg_id"]
+    
+    try:
+        await client.delete_messages(
+            chat_id=target_chat_id,
+            message_ids=target_bot_msg_id
+        )
+        await message.react("👍")
+    except Exception as e:
+        await message.reply_text(f"❌ Bot මැසේජ් එක Delete කිරීමට නොහැකි විය: {e}")
 
 
 # --- Feature: List all chats and Send All button in Bot Private Chat ---
@@ -180,52 +236,38 @@ async def list_chats_for_selection(client, message: Message):
         print(f"DB Fetch Error: {e}")
 
     if not chats:
-        return await message.reply_text("❌ No groups found in the database.")
+        return await message.reply_text("❌ No groups found in database.")
 
-    keyboard = [
-        [InlineKeyboardButton("📢 Send All Groups", callback_data="trigger_send_all")]
-    ]
+    keyboard = [[InlineKeyboardButton("📢 Send All Groups", callback_data="trigger_send_all")]]
 
     for chat in chats:
         chat_id = chat.get("chat_id") if isinstance(chat, dict) else chat
         try:
             chat_info = await client.get_chat(chat_id)
-            chat_title = chat_info.title
-            keyboard.append(
-                [InlineKeyboardButton(chat_title, callback_data=f"select_chat_{chat_id}")]
-            )
+            keyboard.append([InlineKeyboardButton(chat_info.title, callback_data=f"select_chat_{chat_id}")])
         except Exception:
             continue
 
-    await message.reply_text(
-        "📋 **Select a group below or click 'Send All Groups':**",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await message.reply_text("📋 **Select group or send to all:**", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
-# --- Handle Callbacks (Single Chat or Broadcast All) ---
+# --- Handle Private Callbacks & Broadcast ---
 @app.on_callback_query(filters.regex("^(select_chat_|trigger_send_all)"))
 async def chat_selection_callback(client, callback_query: CallbackQuery):
     if not callback_query.from_user or callback_query.from_user.id not in ADMINS:
-        return await callback_query.answer("You are not authorized!", show_alert=True)
+        return await callback_query.answer("Unauthorized!", show_alert=True)
 
     user_id = callback_query.from_user.id
 
     if callback_query.data == "trigger_send_all":
         BROADCAST_MODES.add(user_id)
-        if user_id in SELECTED_CHATS:
-            del SELECTED_CHATS[user_id]
-
-        await callback_query.message.edit_text(
-            "📢 **Broadcast Mode Activated!**\n\n"
-            "✍️ Now, send any message, sticker, photo, or video to broadcast to **ALL groups**."
-        )
+        SELECTED_CHATS.pop(user_id, None)
+        await callback_query.message.edit_text("📢 **Broadcast Mode Active!** Send any message now.")
         return await callback_query.answer()
 
     chat_id = int(callback_query.data.split("_")[2])
     SELECTED_CHATS[user_id] = chat_id
-    if user_id in BROADCAST_MODES:
-        BROADCAST_MODES.remove(user_id)
+    BROADCAST_MODES.discard(user_id)
 
     try:
         chat_info = await client.get_chat(chat_id)
@@ -233,14 +275,10 @@ async def chat_selection_callback(client, callback_query: CallbackQuery):
     except Exception:
         chat_name = str(chat_id)
 
-    await callback_query.message.edit_text(
-        f"✅ Selected Group: **{chat_name}** (`{chat_id}`)\n\n"
-        "✍️ Now, send the message, sticker, or photo you want to send to this group!"
-    )
+    await callback_query.message.edit_text(f"✅ Selected: **{chat_name}** (`{chat_id}`). Send your message now!")
     await callback_query.answer()
 
 
-# --- Listen for ANY message in Private Chat ---
 @app.on_message(filters.private & ~filters.command(["chats", "chat", "start", "help"]))
 async def handle_admin_private_messages(client, message: Message):
     user_id = message.from_user.id
@@ -249,176 +287,23 @@ async def handle_admin_private_messages(client, message: Message):
 
     if user_id in BROADCAST_MODES:
         BROADCAST_MODES.remove(user_id)
-        
-        chats = []
-        try:
-            if hasattr(db, "get_served_chats"):
-                chats = await db.get_served_chats()
-            elif hasattr(db, "get_chats"):
-                chats = await db.get_chats()
-        except Exception as e:
-            return await message.reply_text(f"❌ Database error: {e}")
-
-        if not chats:
-            return await message.reply_text("❌ No groups found in the database.")
-
+        chats = await db.get_served_chats() if hasattr(db, "get_served_chats") else await db.get_chats()
         sent_count = 0
-        status_msg = await message.reply_text("🚀 Broadcasting to all groups...")
-
+        status_msg = await message.reply_text("🚀 Broadcasting...")
         for chat in chats:
-            chat_id = chat.get("chat_id") if isinstance(chat, dict) else chat
+            cid = chat.get("chat_id") if isinstance(chat, dict) else chat
             try:
-                await message.copy(chat_id)
+                await message.copy(cid)
                 sent_count += 1
                 await asyncio.sleep(0.2)
             except Exception:
                 continue
-
-        await status_msg.edit_text(f"✅ **Broadcast Complete!**\nSuccessfully sent to **{sent_count}** groups.")
-        return
+        return await status_msg.edit_text(f"✅ Broadcast complete: Sent to **{sent_count}** groups.")
 
     if user_id in SELECTED_CHATS:
         chat_id = SELECTED_CHATS.pop(user_id)
         try:
             await message.copy(chat_id)
-            await message.reply_text("✅ **Sent successfully to the group!** 👍")
+            await message.reply_text("✅ Sent successfully!")
         except Exception as e:
-            await message.reply_text(f"❌ Failed to send: {e}")
-
-
-# --- Method 1: Dynamic Sender via MSG_GRP_ID ---
-@app.on_message(filters.chat(MSG_GRP_ID) & filters.text)
-async def send_to_group_dynamic(client, message: Message):
-    if message.reply_to_message:  
-        return
-
-    if not message.from_user or message.from_user.id not in ADMINS:
-        return
-
-    text = message.text.strip()
-    if not text or "/" not in text:
-        return
-
-    try:
-        target_part, actual_message = text.split("/", 1)
-        target_raw = target_part.strip()
-        text_to_send = actual_message.strip()
-
-        if not text_to_send:
-            return
-
-        if target_raw.startswith("https://t.me/"):
-            target = target_raw.replace("https://t.me/", "").strip("@/")
-        elif target_raw.startswith("t.me/"):
-            target = target_raw.replace("t.me/", "").strip("@/")
-        elif target_raw.lstrip("-").isdigit():
-            target = int(target_raw)
-        else:
-            target = target_raw if target_raw.startswith("@") else f"@{target_raw}"
-
-        sent_msg = await client.send_message(chat_id=target, text=text_to_send)
-        LOGGER_REPLY_MAP[message.id] = {
-            "chat_id": sent_msg.chat.id,
-            "user_msg_id": None,
-            "bot_msg_id": sent_msg.id
-        }
-        await message.react("👍")
-
-    except Exception as e:
-        print(f"Logger Error: {e}")
-        await message.reply_text(f"❌ Error: {e}")
-
-
-# --- Method 2: Triggering via Command (!s / .s in Groups) ---
-@app.on_message(
-    filters.command(["s", "secret"], prefixes=["!", "."]) & ~filters.private
-)
-async def reply_as_bot_command(client, message: Message):
-    if not message.from_user or message.from_user.id not in ADMINS:
-        return
-
-    text_to_send = message.text.split(None, 1)
-    if len(text_to_send) < 2:
-        return
-
-    actual_text = text_to_send[1].strip()
-    if not actual_text:
-        return
-
-    try:
-        await message.delete()
-        if message.reply_to_message:
-            await message.reply_to_message.reply_text(actual_text)
-        else:
-            await message.reply_text(actual_text)
-    except Exception as e:
-        print(f"Command Trigger Error: {e}")
-
-
-# --- Feature: Edit Outbound Messages directly from MSG_GRP_ID ---
-@app.on_message(
-    filters.chat(MSG_GRP_ID) & filters.command(["edit", "ed"], prefixes=["/", "!", "."])
-)
-async def edit_outbound_message(client, message: Message):
-    if not message.from_user or message.from_user.id not in ADMINS:
-        return
-    
-    if not message.reply_to_message:
-        return await message.reply_text("❌ Please reply to your sent reply message in MSG_GRP_ID to edit it!")
-    
-    orig_msg_id = message.reply_to_message.id
-    map_data = get_map_data(orig_msg_id)
-    
-    if not map_data or not map_data.get("bot_msg_id"):
-        return await message.reply_text("❌ Could not find target bot message to edit. Reply directly to your sent reply message.")
-    
-    target_chat_id = map_data["chat_id"]
-    target_msg_id = map_data["bot_msg_id"]
-    
-    args = message.text.split(None, 1)
-    if len(args) < 2:
-        return await message.reply_text("❌ Please provide the new text. Example: `/edit New text`")
-    
-    new_text = args[1].strip()
-    try:
-        await client.edit_message_text(
-            chat_id=target_chat_id,
-            message_id=target_msg_id,
-            text=new_text
-        )
-        await message.react("👍")
-    except Exception as e:
-        await message.reply_text(f"❌ Failed to edit in target group: {e}")
-
-
-# --- Feature: Delete Outbound/User Messages directly from MSG_GRP_ID ---
-@app.on_message(
-    filters.chat(MSG_GRP_ID) & filters.command(["del", "delete", "remove"], prefixes=["/", "!", "."])
-)
-async def delete_outbound_message(client, message: Message):
-    if not message.from_user or message.from_user.id not in ADMINS:
-        return
-    
-    if not message.reply_to_message:
-        return await message.reply_text("❌ Please reply to a message in MSG_GRP_ID to delete!")
-    
-    orig_msg_id = message.reply_to_message.id
-    map_data = get_map_data(orig_msg_id)
-    
-    if not map_data:
-        return await message.reply_text("❌ Could not find target message mapping.")
-    
-    target_chat_id = map_data.get("chat_id")
-    target_msg_id = map_data.get("bot_msg_id") or map_data.get("user_msg_id")
-    
-    if not target_chat_id or not target_msg_id:
-        return await message.reply_text("❌ Target message ID not found.")
-    
-    try:
-        await client.delete_messages(
-            chat_id=target_chat_id,
-            message_ids=target_msg_id
-        )
-        await message.react("👍")
-    except Exception as e:
-        await message.reply_text(f"❌ Failed to delete in target group: {e}")
+            await message.reply_text(f"❌ Failed: {e}")
