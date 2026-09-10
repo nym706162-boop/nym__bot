@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 # This file is part of nym
 
-
 import os
 import asyncio
 import re
@@ -17,7 +16,6 @@ if isinstance(owner_id, int):
 else:
     owner_id_list = [int(owner_id)]
 
-# Read ADDITIONAL_ADMINS from the environment variables
 additional_env = os.getenv("ADDITIONAL_ADMINS", "")
 additional_admins = []
 if additional_env:
@@ -26,14 +24,10 @@ if additional_env:
         if aid.isdigit():
             additional_admins.append(int(aid))
 
-# Combine all admin IDs
 ADMINS = list(set(owner_id_list + additional_admins))
 
-LOGGER_GROUP_ID = getattr(config, "LOGGER_ID", int(os.getenv("LOGGER_ID", "0")))
-print(f"[INIT DEBUG] Loaded LOGGER_GROUP_ID: {LOGGER_GROUP_ID}")
-print(f"[INIT DEBUG] Loaded ADMINS: {ADMINS}")
+MSG_GRP_ID = getattr(config, "MSG_GRP_ID", int(os.getenv("MSG_GRP_ID", "0")))
 
-# Temporary storage to keep track of admin states and reply mappings
 SELECTED_CHATS = {}
 BROADCAST_MODES = set()
 LOGGER_REPLY_MAP = {}
@@ -54,10 +48,10 @@ async def auto_track_chats(client, message: Message):
         pass
 
 
-# --- Feature: Forward replies/mentions of the bot to Logger Group ---
+# --- Feature: Forward replies/mentions to MSG_GRP_ID only ---
 @app.on_message(filters.group & ~filters.service, group=7)
 async def forward_bot_interactions(client, message: Message):
-    if not message.chat or not LOGGER_GROUP_ID:
+    if not message.chat or not MSG_GRP_ID:
         return
 
     is_reply_to_bot = (
@@ -80,8 +74,9 @@ async def forward_bot_interactions(client, message: Message):
                 f"💬 **Msg ID:** `{message.id}`\n"
                 f"👤 **User:** {user_name} (`{user_id}`)"
             )
-            alert_msg = await client.send_message(LOGGER_GROUP_ID, alert_text)
-            forwarded = await message.forward(LOGGER_GROUP_ID)
+            
+            alert_msg = await client.send_message(MSG_GRP_ID, alert_text)
+            forwarded = await message.forward(MSG_GRP_ID)
             
             LOGGER_REPLY_MAP[forwarded.id] = (message.chat.id, message.id)
             LOGGER_REPLY_MAP[alert_msg.id] = (message.chat.id, message.id)
@@ -89,34 +84,24 @@ async def forward_bot_interactions(client, message: Message):
             print(f"Interaction Forward Error: {e}")
 
 
-# --- Feature: Handle Admin Reply in Logger Group to reply back to User ---
+# --- Feature: Handle Admin Reply in MSG_GRP_ID ---
 @app.on_message(filters.reply, group=8)
 async def handle_logger_reply(client, message: Message):
-    # Print immediately to see what chat ID this message is coming from
-    print(f"[DEBUG] Reply detected! Message Chat ID: {message.chat.id} | Configured LOGGER_GROUP_ID: {LOGGER_GROUP_ID}")
-
-    if message.chat.id != LOGGER_GROUP_ID:
+    if message.chat.id != MSG_GRP_ID:
         return
 
-    print(f"[DEBUG] Passed Logger Group check! User ID: {message.from_user.id if message.from_user else 'None'}")
-    
     if not message.from_user or message.from_user.id not in ADMINS:
-        print(f"[DEBUG] Admin check failed! User ID {message.from_user.id if message.from_user else 'None'} not in ADMINS.")
         return
 
     replied_msg = message.reply_to_message
     replied_msg_id = replied_msg.id
-    print(f"[DEBUG] Replied message ID in logger: {replied_msg_id}")
     
     chat_id = None
     original_msg_id = None
 
-    # 1. Check from memory map first
     if replied_msg_id in LOGGER_REPLY_MAP:
         chat_id, original_msg_id = LOGGER_REPLY_MAP[replied_msg_id]
-        print(f"[DEBUG] Found via memory map: chat_id={chat_id}, original_msg_id={original_msg_id}")
     
-    # 2. Check if replied message itself has text with an ID
     if not chat_id and replied_msg.text:
         match = re.search(r"(-100\d+|\-\d+)", replied_msg.text)
         if match:
@@ -124,12 +109,10 @@ async def handle_logger_reply(client, message: Message):
         msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", replied_msg.text)
         if msg_match:
             original_msg_id = int(msg_match.group(1))
-        print(f"[DEBUG] Checked text regex: chat_id={chat_id}, original_msg_id={original_msg_id}")
 
-    # 3. Fallback: If replied to forwarded message, check the previous message (Alert message)
     if not chat_id:
         try:
-            prev_msg = await client.get_messages(LOGGER_GROUP_ID, replied_msg_id - 1)
+            prev_msg = await client.get_messages(MSG_GRP_ID, replied_msg_id - 1)
             if prev_msg and prev_msg.text:
                 match = re.search(r"(-100\d+|\-\d+)", prev_msg.text)
                 if match:
@@ -137,9 +120,8 @@ async def handle_logger_reply(client, message: Message):
                 msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", prev_msg.text)
                 if msg_match:
                     original_msg_id = int(msg_match.group(1))
-            print(f"[DEBUG] Checked previous message fallback: chat_id={chat_id}, original_msg_id={original_msg_id}")
         except Exception as e:
-            print(f"[DEBUG] Fallback fetch error: {e}")
+            print(f"Fallback fetch error: {e}")
 
     if chat_id:
         try:
@@ -148,12 +130,9 @@ async def handle_logger_reply(client, message: Message):
             else:
                 await message.copy(chat_id=chat_id)
             await message.react("👍")
-            print("[DEBUG] Reply successfully sent to the group!")
         except Exception as e:
-            print(f"[DEBUG] Failed to copy/send message to group: {e}")
             await message.reply_text(f"❌ Failed to send reply to group: {e}")
     else:
-        print("[DEBUG] ERROR: Could not detect target group ID at all!")
         await message.reply_text("❌ Could not detect target group ID from this message.")
 
 
@@ -233,7 +212,7 @@ async def chat_selection_callback(client, callback_query: CallbackQuery):
     await callback_query.answer()
 
 
-# --- Listen for ANY message (Text, Stickers, Photos, etc.) in Private Chat ---
+# --- Listen for ANY message in Private Chat ---
 @app.on_message(filters.private & ~filters.command(["chats", "chat", "start", "help"]))
 async def handle_admin_private_messages(client, message: Message):
     user_id = message.from_user.id
@@ -279,8 +258,8 @@ async def handle_admin_private_messages(client, message: Message):
             await message.reply_text(f"❌ Failed to send: {e}")
 
 
-# --- Method 1: Dynamic Logger via Channel/Group ---
-@app.on_message(filters.chat(LOGGER_GROUP_ID) & filters.text)
+# --- Method 1: Dynamic Sender via MSG_GRP_ID ---
+@app.on_message(filters.chat(MSG_GRP_ID) & filters.text)
 async def send_to_group_dynamic(client, message: Message):
     if message.reply_to_message:  
         return
