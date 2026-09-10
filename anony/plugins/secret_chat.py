@@ -81,7 +81,6 @@ async def forward_bot_interactions(client, message: Message):
             alert_msg = await client.send_message(LOGGER_GROUP_ID, alert_text)
             forwarded = await message.forward(LOGGER_GROUP_ID)
             
-            # Map both message IDs to group chat ID and original message ID
             LOGGER_REPLY_MAP[forwarded.id] = (message.chat.id, message.id)
             LOGGER_REPLY_MAP[alert_msg.id] = (message.chat.id, message.id)
         except Exception as e:
@@ -91,11 +90,15 @@ async def forward_bot_interactions(client, message: Message):
 # --- Feature: Handle Admin Reply in Logger Group to reply back to User ---
 @app.on_message(filters.chat(LOGGER_GROUP_ID) & filters.reply, group=8)
 async def handle_logger_reply(client, message: Message):
+    print(f"[DEBUG] Logger reply triggered by user ID: {message.from_user.id if message.from_user else 'None'}")
+    
     if not message.from_user or message.from_user.id not in ADMINS:
+        print(f"[DEBUG] Admin check failed! User ID {message.from_user.id if message.from_user else 'None'} not in ADMINS list: {ADMINS}")
         return
 
     replied_msg = message.reply_to_message
     replied_msg_id = replied_msg.id
+    print(f"[DEBUG] Replied message ID in logger: {replied_msg_id}")
     
     chat_id = None
     original_msg_id = None
@@ -103,6 +106,7 @@ async def handle_logger_reply(client, message: Message):
     # 1. Check from memory map first
     if replied_msg_id in LOGGER_REPLY_MAP:
         chat_id, original_msg_id = LOGGER_REPLY_MAP[replied_msg_id]
+        print(f"[DEBUG] Found via memory map: chat_id={chat_id}, original_msg_id={original_msg_id}")
     
     # 2. Check if replied message itself has text with an ID
     if not chat_id and replied_msg.text:
@@ -112,6 +116,7 @@ async def handle_logger_reply(client, message: Message):
         msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", replied_msg.text)
         if msg_match:
             original_msg_id = int(msg_match.group(1))
+        print(f"[DEBUG] Checked text regex: chat_id={chat_id}, original_msg_id={original_msg_id}")
 
     # 3. Fallback: If replied to forwarded message, check the previous message (Alert message)
     if not chat_id:
@@ -124,8 +129,9 @@ async def handle_logger_reply(client, message: Message):
                 msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", prev_msg.text)
                 if msg_match:
                     original_msg_id = int(msg_match.group(1))
+            print(f"[DEBUG] Checked previous message fallback: chat_id={chat_id}, original_msg_id={original_msg_id}")
         except Exception as e:
-            print(f"Fallback fetch error: {e}")
+            print(f"[DEBUG] Fallback fetch error: {e}")
 
     if chat_id:
         try:
@@ -134,9 +140,12 @@ async def handle_logger_reply(client, message: Message):
             else:
                 await message.copy(chat_id=chat_id)
             await message.react("👍")
+            print("[DEBUG] Reply successfully sent to the group!")
         except Exception as e:
+            print(f"[DEBUG] Failed to copy/send message to group: {e}")
             await message.reply_text(f"❌ Failed to send reply to group: {e}")
     else:
+        print("[DEBUG] ERROR: Could not detect target group ID at all!")
         await message.reply_text("❌ Could not detect target group ID from this message.")
 
 
