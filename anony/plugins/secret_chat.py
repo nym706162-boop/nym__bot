@@ -105,7 +105,7 @@ async def chat_selection_callback(client, callback_query: CallbackQuery):
 
         await callback_query.message.edit_text(
             "📢 **Broadcast Mode Activated!**\n\n"
-            "✍️ Now, simply type and send the message you want to broadcast to **ALL groups**."
+            "✍️ Now, send any message, sticker, photo, or video to broadcast to **ALL groups**."
         )
         return await callback_query.answer()
 
@@ -123,21 +123,17 @@ async def chat_selection_callback(client, callback_query: CallbackQuery):
 
     await callback_query.message.edit_text(
         f"✅ Selected Group: **{chat_name}** (`{chat_id}`)\n\n"
-        "✍️ Now, simply type and send the message you want to send to this group!"
+        "✍️ Now, send the message, sticker, or photo you want to send to this group!"
     )
     await callback_query.answer()
 
 
-# --- Listen for text messages in Private Chat after selection or broadcast trigger ---
+# --- Listen for ANY message (Text, Stickers, Photos, etc.) in Private Chat ---
 @app.on_message(filters.private & ~filters.command(["chats", "chat", "start", "help"]))
 async def handle_admin_private_messages(client, message: Message):
     user_id = message.from_user.id
     if user_id not in ADMINS:
         return
-
-    text_to_send = message.text.strip()
-    if not text_to_send:
-        return await message.reply_text("❌ Please send a valid text message.")
 
     # 1. Handle Broadcast All Mode
     if user_id in BROADCAST_MODES:
@@ -156,12 +152,12 @@ async def handle_admin_private_messages(client, message: Message):
             return await message.reply_text("❌ No groups found in the database.")
 
         sent_count = 0
-        status_msg = await message.reply_text("🚀 Broadcasting message to all groups...")
+        status_msg = await message.reply_text("🚀 Broadcasting to all groups...")
 
         for chat in chats:
             chat_id = chat.get("chat_id") if isinstance(chat, dict) else chat
             try:
-                await client.send_message(chat_id=chat_id, text=text_to_send)
+                await message.copy(chat_id)
                 sent_count += 1
                 await asyncio.sleep(0.2)
             except Exception:
@@ -174,10 +170,10 @@ async def handle_admin_private_messages(client, message: Message):
     if user_id in SELECTED_CHATS:
         chat_id = SELECTED_CHATS.pop(user_id)
         try:
-            await client.send_message(chat_id=chat_id, text=text_to_send)
-            await message.reply_text("✅ **Message sent successfully to the group!** 👍")
+            await message.copy(chat_id)
+            await message.reply_text("✅ **Sent successfully to the group!** 👍")
         except Exception as e:
-            await message.reply_text(f"❌ Failed to send message: {e}")
+            await message.reply_text(f"❌ Failed to send: {e}")
 
 
 # --- Method 1: Dynamic Logger via Channel/Group ---
