@@ -30,9 +30,10 @@ ADMINS = list(set(owner_id_list + additional_admins))
 
 LOGGER_GROUP_ID = getattr(config, "LOGGER_ID", int(os.getenv("LOGGER_ID", "0")))
 
-# Temporary storage to keep track of admin states
+# Temporary storage to keep track of admin states and reply mappings
 SELECTED_CHATS = {}
 BROADCAST_MODES = set()
+LOGGER_REPLY_MAP = {}
 
 
 # --- Auto-track/Update chats when bot interacts in groups ---
@@ -48,6 +49,56 @@ async def auto_track_chats(client, message: Message):
             await db.add_chat(chat_id)
     except Exception:
         pass
+
+
+# --- Feature: Forward replies/mentions of the bot to Logger Group ---
+@app.on_message(filters.group & ~filters.service, group=7)
+async def forward_bot_interactions(client, message: Message):
+    if not message.chat or not LOGGER_GROUP_ID:
+        return
+
+    is_reply_to_bot = (
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and message.reply_to_message.from_user.is_self
+    )
+    is_mentioned = message.mentioned
+
+    if is_reply_to_bot or is_mentioned:
+        try:
+            chat_title = message.chat.title
+            user_name = message.from_user.first_name if message.from_user else "Unknown"
+            user_id = message.from_user.id if message.from_user else 0
+
+            alert_text = (
+                f"🔔 **New Reply / Mention in Group!**\n\n"
+                f"📌 **Group:** {chat_title} (`{message.chat.id}`)\n"
+                f"👤 **User:** {user_name} (`{user_id}`)"
+            )
+            await client.send_message(LOGGER_GROUP_ID, alert_text)
+            forwarded = await message.forward(LOGGER_GROUP_ID)
+            
+            # Map forwarded message ID to group chat ID and original message ID
+            LOGGER_REPLY_MAP[forwarded.id] = (message.chat.id, message.id)
+        except Exception as e:
+            print(f"Interaction Forward Error: {e}")
+
+
+# --- Feature: Handle Admin Reply in Logger Group to reply back to User ---
+@app.on_message(filters.chat(LOGGER_GROUP_ID) & filters.reply, group=8)
+async def handle_logger_reply(client, message: Message):
+    if not message.from_user or message.from_user.id not in ADMINS:
+        return
+
+    replied_msg_id = message.reply_to_message.id
+    if replied_msg_id in LOGGER_REPLY_MAP:
+        chat_id, original_msg_id = LOGGER_REPLY_MAP[replied_msg_id]
+        try:
+            # Copy admin's reply (text, sticker, photo, etc.) and reply directly to the user in the group
+            await message.copy(chat_id=chat_id, reply_to_message_id=original_msg_id)
+            await message.react("👍")
+        except Exception as e:
+            await message.reply_text(f"❌ Failed to send reply to group: {e}")
 
 
 # --- Feature: List all chats and Send All button in Bot Private Chat ---
@@ -179,6 +230,9 @@ async def handle_admin_private_messages(client, message: Message):
 # --- Method 1: Dynamic Logger via Channel/Group ---
 @app.on_message(filters.chat(LOGGER_GROUP_ID) & filters.text)
 async def send_to_group_dynamic(client, message: Message):
+    if message.reply_to_message:  # Skip if it's a reply (handled by handle_logger_reply)
+        return
+
     if not message.from_user or message.from_user.id not in ADMINS:
         return
 
