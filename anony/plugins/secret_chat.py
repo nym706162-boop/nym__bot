@@ -33,7 +33,7 @@ BROADCAST_MODES = set()
 LOGGER_REPLY_MAP = {}
 
 
-# --- Smart Recursive Mapping Finder ---
+# --- Smart Recursive Mapping Finder (Survives Restarts for Old Messages) ---
 async def find_mapping_recursive(client, msg: Message):
     current = msg
     for _ in range(12):  # Trace back up to 12 replies deep
@@ -44,7 +44,7 @@ async def find_mapping_recursive(client, msg: Message):
         if current.id in LOGGER_REPLY_MAP:
             return LOGGER_REPLY_MAP[current.id]
         
-        # 2. Extract from Alert Header text if available
+        # 2. Extract from current message text if header is present
         if current.text:
             chat_match = re.search(r"(-100\d+|\-\d+)", current.text)
             msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", current.text)
@@ -55,7 +55,37 @@ async def find_mapping_recursive(client, msg: Message):
                     "bot_msg_id": None
                 }
         
-        # 3. Move up the Telegram reply chain
+        # 3. Fallback for forwarded messages after restart: Check adjacent alert header (id - 1)
+        try:
+            prev_msg = await client.get_messages(current.chat.id, current.id - 1)
+            if prev_msg and prev_msg.text:
+                chat_match = re.search(r"(-100\d+|\-\d+)", prev_msg.text)
+                msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", prev_msg.text)
+                if chat_match and msg_match:
+                    return {
+                        "chat_id": int(chat_match.group(1)),
+                        "user_msg_id": int(msg_match.group(1)),
+                        "bot_msg_id": None
+                    }
+        except Exception:
+            pass
+
+        # 4. Fallback check for adjacent message (id + 1)
+        try:
+            next_msg = await client.get_messages(current.chat.id, current.id + 1)
+            if next_msg and next_msg.text:
+                chat_match = re.search(r"(-100\d+|\-\d+)", next_msg.text)
+                msg_match = re.search(r"Msg ID:\s*`?(\d+)`?", next_msg.text)
+                if chat_match and msg_match:
+                    return {
+                        "chat_id": int(chat_match.group(1)),
+                        "user_msg_id": int(msg_match.group(1)),
+                        "bot_msg_id": None
+                    }
+        except Exception:
+            pass
+
+        # 5. Move up the Telegram reply chain
         if current.reply_to_message:
             current = current.reply_to_message
         elif current.reply_to_message_id:
@@ -207,7 +237,7 @@ async def delete_outbound_message(client, message: Message):
     if not map_data or not map_data.get("chat_id"):
         return await message.reply_text("❌ Could not find the target group for deletion.")
     
-    # Priority: bot_msg_id first (if replying to admin response), fallback to user_msg_id (if replying to user's forwarded msg)
+    # Priority: bot_msg_id first (if replying to admin response), fallback to user_msg_id
     target_msg_id = map_data.get("bot_msg_id") or map_data.get("user_msg_id")
     
     if not target_msg_id:
