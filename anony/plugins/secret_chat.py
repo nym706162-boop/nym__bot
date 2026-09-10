@@ -258,7 +258,7 @@ async def handle_admin_private_messages(client, message: Message):
             await message.reply_text(f"❌ Failed to send: {e}")
 
 
-# --- Method 1: Dynamic Sender via MSG_GRP_ID ---
+# --- Method 1: Dynamic Sender via MSG_GRP_ID (With Auto-Tracking for Edit/Del) ---
 @app.on_message(filters.chat(MSG_GRP_ID) & filters.text)
 async def send_to_group_dynamic(client, message: Message):
     if message.reply_to_message:  
@@ -288,7 +288,11 @@ async def send_to_group_dynamic(client, message: Message):
         else:
             target = target_raw if target_raw.startswith("@") else f"@{target_raw}"
 
-        await client.send_message(chat_id=target, text=text_to_send)
+        sent_msg = await client.send_message(chat_id=target, text=text_to_send)
+        
+        # LOGGER_REPLY_MAP එක හරහා මැසේජ් එක ලියා තබා ගැනීම (Edit/Del සඳහා)
+        LOGGER_REPLY_MAP[message.id] = (sent_msg.chat.id, sent_msg.id)
+        
         await message.react("👍")
 
     except Exception as e:
@@ -320,3 +324,64 @@ async def reply_as_bot_command(client, message: Message):
             await message.reply_text(actual_text)
     except Exception as e:
         print(f"Command Trigger Error: {e}")
+
+
+# --- Feature: Edit Messages directly from MSG_GRP_ID ---
+@app.on_message(
+    filters.chat(MSG_GRP_ID) & filters.command(["edit", "ed"], prefixes=["/", "!", "."])
+)
+async def edit_outbound_message(client, message: Message):
+    if not message.from_user or message.from_user.id not in ADMINS:
+        return
+    
+    if not message.reply_to_message:
+        return await message.reply_text("❌ Please reply to your original send command message in this group to edit!")
+    
+    orig_msg_id = message.reply_to_message.id
+    if orig_msg_id not in LOGGER_REPLY_MAP:
+        return await message.reply_text("❌ Could not find target message mapping.")
+    
+    target_chat_id, target_msg_id = LOGGER_REPLY_MAP[orig_msg_id]
+    
+    args = message.text.split(None, 1)
+    if len(args) < 2:
+        return await message.reply_text("❌ Please provide the new text. Example: `/edit New text`")
+    
+    new_text = args[1].strip()
+    try:
+        await client.edit_message_text(
+            chat_id=target_chat_id,
+            message_id=target_msg_id,
+            text=new_text
+        )
+        await message.react("👍")
+    except Exception as e:
+        await message.reply_text(f"❌ Failed to edit in target group: {e}")
+
+
+# --- Feature: Delete Messages directly from MSG_GRP_ID ---
+@app.on_message(
+    filters.chat(MSG_GRP_ID) & filters.command(["del", "delete", "remove"], prefixes=["/", "!", "."])
+)
+async def delete_outbound_message(client, message: Message):
+    if not message.from_user or message.from_user.id not in ADMINS:
+        return
+    
+    if not message.reply_to_message:
+        return await message.reply_text("❌ Please reply to your original send command message in this group to delete!")
+    
+    orig_msg_id = message.reply_to_message.id
+    if orig_msg_id not in LOGGER_REPLY_MAP:
+        return await message.reply_text("❌ Could not find target message mapping.")
+    
+    target_chat_id, target_msg_id = LOGGER_REPLY_MAP[orig_msg_id]
+    
+    try:
+        await client.delete_messages(
+            chat_id=target_chat_id,
+            message_ids=target_msg_id
+        )
+        await message.react("👍")
+        del LOGGER_REPLY_MAP[orig_msg_id]
+    except Exception as e:
+        await message.reply_text(f"❌ Failed to delete in target group: {e}")
