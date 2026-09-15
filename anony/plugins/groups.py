@@ -1,17 +1,7 @@
 from pyrogram import filters, types
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from anony import app, config, db
-
-# Safe database function imports with fallback paths
-try:
-    from anony.utilities.database import get_served_chats, remove_served_chat
-except ImportError:
-    try:
-        from anony.utils.database import get_served_chats, remove_served_chat
-    except ImportError:
-        get_served_chats = None
-        remove_served_chat = None
+from anony import app, config, db, userbot
 
 
 # Check if user is Owner, Additional Admin, or Sudoer
@@ -37,34 +27,33 @@ def is_bot_admin(user_id: int) -> bool:
     return False
 
 
-async def fetch_served_chats():
-    if get_served_chats is not None:
-        return await get_served_chats()
+async def get_all_served_chats():
+    chat_ids = set()
 
-    # Direct MongoDB fallback if import paths vary
-    chats = []
+    # Method 1: Fetch from MongoDB directly
     try:
         mongo_db = getattr(db, "db", db)
-        collection = getattr(mongo_db, "served_chats", None) or getattr(mongo_db, "chats", None)
-        if collection is not None:
-            async for chat in collection.find({"chat_id": {"$lt": 0}}):
-                chats.append(chat)
+        cols = await mongo_db.list_collection_names()
+        for col_name in ["served_chats", "chats", "servedchats", "group_chats"]:
+            if col_name in cols:
+                async for doc in mongo_db[col_name].find():
+                    cid = doc.get("chat_id") or doc.get("_id") or doc.get("chat")
+                    if isinstance(cid, int) and cid < 0:
+                        chat_ids.add(cid)
     except Exception:
         pass
-    return chats
 
+    # Method 2: Fallback to Userbot Dialogs (Userbot can fetch dialogs)
+    if not chat_ids and userbot:
+        try:
+            async for dialog in userbot.get_dialogs(limit=100):
+                chat_type = str(dialog.chat.type).lower()
+                if "group" in chat_type or "supergroup" in chat_type:
+                    chat_ids.add(dialog.chat.id)
+        except Exception:
+            pass
 
-async def delete_served_chat(chat_id: int):
-    if remove_served_chat is not None:
-        return await remove_served_chat(chat_id)
-
-    try:
-        mongo_db = getattr(db, "db", db)
-        collection = getattr(mongo_db, "served_chats", None) or getattr(mongo_db, "chats", None)
-        if collection is not None:
-            await collection.delete_one({"chat_id": chat_id})
-    except Exception:
-        pass
+    return list(chat_ids)
 
 
 @app.on_message(filters.command(["groups", "servedchats", "chatlist"]))
@@ -76,20 +65,19 @@ async def list_groups_handler(_, message: types.Message):
 
     sent = await message.reply_text("🔎 Fetching group list...")
 
-    served_chats = await fetch_served_chats()
-    if not served_chats:
+    chat_ids = await get_all_served_chats()
+    if not chat_ids:
         return await sent.edit_text("❌ The bot is not currently in any group.")
 
     buttons = []
     text = "<b>🤖 List of active groups:</b>\n\n"
 
-    for count, chat in enumerate(served_chats, 1):
-        chat_id = chat["chat_id"] if isinstance(chat, dict) else chat
+    for count, chat_id in enumerate(chat_ids[:15], 1):
         try:
             chat_obj = await app.get_chat(chat_id)
             title = chat_obj.title
         except Exception:
-            title = f"Unknown Chat ({chat_id})"
+            title = f"Group ({chat_id})"
 
         text += f"<b>{count}.</b> {title}\n"
 
@@ -100,7 +88,7 @@ async def list_groups_handler(_, message: types.Message):
             )
         ])
 
-    reply_markup = InlineKeyboardMarkup(buttons[:15])
+    reply_markup = InlineKeyboardMarkup(buttons)
     await sent.edit_text(text, reply_markup=reply_markup)
 
 
@@ -114,8 +102,24 @@ async def leave_group_callback(_, query: types.CallbackQuery):
     chat_id = int(query.data.split("_")[2])
 
     try:
+        # Leave from both Bot and Userbot
         await app.leave_chat(chat_id)
-        await delete_served_chat(chat_id)
+        try:
+            await userbot.leave_chat(chat_id)
+        except Exception:
+            pass
+
+        # Cleanup from DB
+        try:
+            mongo_db = getattr(db, "db", db)
+            cols = await mongo_db.list_collection_names()
+            for col_name in ["served_chats", "chats", "servedchats"]:
+                if col_name in cols:
+                    await mongo_db[col_name].delete_many(
+                        {"$or": [{"chat_id": chat_id}, {"_id": chat_id}]}
+                    )
+        except Exception:
+            pass
 
         await query.answer(
             "✅ Bot successfully left the group!", show_alert=True
