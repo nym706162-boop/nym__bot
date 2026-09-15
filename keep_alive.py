@@ -14,6 +14,10 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
 
+    # Suppress HTTP request logs to keep Render logs clean
+    def log_message(self, format, *args):
+        pass
+
 def run():
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
