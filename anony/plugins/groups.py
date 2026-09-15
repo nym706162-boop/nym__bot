@@ -2,7 +2,7 @@ from pyrogram import filters, types
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from anony import app, config
-from anony.utils.database import get_served_chats, remove_served_chat
+from anony.database import get_served_chats, remove_served_chat
 
 
 # Check if user is Owner, Additional Admin, or Sudoer
