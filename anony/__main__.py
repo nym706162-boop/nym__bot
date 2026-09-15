@@ -3,14 +3,27 @@
 # This file is part of nym
 
 import asyncio
-import signal
+import ctypes
+import gc
 import importlib
+import signal
 
 from keep_alive import keep_alive
 
 from anony import (anon, app, config, db, logger,
-                   stop, thumb, userbot, yt)
+                    stop, thumb, userbot, yt)
 from anony.plugins import all_modules
+
+
+# Background RAM Trimmer for Render 512MB RAM Optimization
+async def auto_ram_trimmer():
+    while True:
+        await asyncio.sleep(300)  # Runs garbage collection every 5 minutes
+        gc.collect()
+        try:
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
 
 
 async def idle():
@@ -47,6 +60,9 @@ async def main():
     app.sudoers.update(sudoers)
     app.bl_users.update(await db.get_blacklisted())
     logger.info(f"Loaded {len(app.sudoers)} sudo users.")
+
+    # Start background RAM Trimmer
+    asyncio.create_task(auto_ram_trimmer())
 
     await idle()
     await stop()
