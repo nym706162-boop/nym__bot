@@ -1,8 +1,17 @@
 from pyrogram import filters, types
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from anony import app, config
-from anony.database import get_served_chats, remove_served_chat
+from anony import app, config, db
+
+# Safe database function imports with fallback paths
+try:
+    from anony.utilities.database import get_served_chats, remove_served_chat
+except ImportError:
+    try:
+        from anony.utils.database import get_served_chats, remove_served_chat
+    except ImportError:
+        get_served_chats = None
+        remove_served_chat = None
 
 
 # Check if user is Owner, Additional Admin, or Sudoer
@@ -28,6 +37,36 @@ def is_bot_admin(user_id: int) -> bool:
     return False
 
 
+async def fetch_served_chats():
+    if get_served_chats is not None:
+        return await get_served_chats()
+
+    # Direct MongoDB fallback if import paths vary
+    chats = []
+    try:
+        mongo_db = getattr(db, "db", db)
+        collection = getattr(mongo_db, "served_chats", None) or getattr(mongo_db, "chats", None)
+        if collection is not None:
+            async for chat in collection.find({"chat_id": {"$lt": 0}}):
+                chats.append(chat)
+    except Exception:
+        pass
+    return chats
+
+
+async def delete_served_chat(chat_id: int):
+    if remove_served_chat is not None:
+        return await remove_served_chat(chat_id)
+
+    try:
+        mongo_db = getattr(db, "db", db)
+        collection = getattr(mongo_db, "served_chats", None) or getattr(mongo_db, "chats", None)
+        if collection is not None:
+            await collection.delete_one({"chat_id": chat_id})
+    except Exception:
+        pass
+
+
 @app.on_message(filters.command(["groups", "servedchats", "chatlist"]))
 async def list_groups_handler(_, message: types.Message):
     if not is_bot_admin(message.from_user.id):
@@ -37,7 +76,7 @@ async def list_groups_handler(_, message: types.Message):
 
     sent = await message.reply_text("🔎 Fetching group list...")
 
-    served_chats = await get_served_chats()
+    served_chats = await fetch_served_chats()
     if not served_chats:
         return await sent.edit_text("❌ The bot is not currently in any group.")
 
@@ -76,7 +115,7 @@ async def leave_group_callback(_, query: types.CallbackQuery):
 
     try:
         await app.leave_chat(chat_id)
-        await remove_served_chat(chat_id)
+        await delete_served_chat(chat_id)
 
         await query.answer(
             "✅ Bot successfully left the group!", show_alert=True
