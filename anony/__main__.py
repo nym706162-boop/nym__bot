@@ -15,13 +15,18 @@ from anony import (anon, app, config, db, logger,
 from anony.plugins import all_modules
 
 
-# Background RAM Trimmer for Render 512MB RAM Optimization
+# Safe background RAM Trimmer for Render 512MB RAM Optimization
 async def auto_ram_trimmer():
     while True:
-        await asyncio.sleep(300)  # Runs garbage collection every 5 minutes
-        gc.collect()
+        await asyncio.sleep(300)
         try:
-            ctypes.CDLL("libc.so.6").malloc_trim(0)
+            gc.collect()
+            try:
+                libc = ctypes.CDLL(None)
+                if hasattr(libc, "malloc_trim"):
+                    libc.malloc_trim(0)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -61,7 +66,7 @@ async def main():
     app.bl_users.update(await db.get_blacklisted())
     logger.info(f"Loaded {len(app.sudoers)} sudo users.")
 
-    # Start background RAM Trimmer
+    # Start background RAM Trimmer task
     asyncio.create_task(auto_ram_trimmer())
 
     await idle()
