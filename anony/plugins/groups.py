@@ -1,7 +1,8 @@
 from pyrogram import filters, types
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from anony import app, config, db
+from anony import app, config
+from anony.utils.database import get_served_chats, remove_served_chat
 
 
 # Check if user is Owner, Additional Admin, or Sudoer
@@ -36,7 +37,7 @@ async def list_groups_handler(_, message: types.Message):
 
     sent = await message.reply_text("🔎 Fetching group list...")
 
-    served_chats = await db.get_served_chats()
+    served_chats = await get_served_chats()
     if not served_chats:
         return await sent.edit_text("❌ The bot is not currently in any group.")
 
@@ -75,8 +76,7 @@ async def leave_group_callback(_, query: types.CallbackQuery):
 
     try:
         await app.leave_chat(chat_id)
-        if hasattr(db, "remove_served_chat"):
-            await db.remove_served_chat(chat_id)
+        await remove_served_chat(chat_id)
 
         await query.answer(
             "✅ Bot successfully left the group!", show_alert=True
